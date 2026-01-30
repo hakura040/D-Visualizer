@@ -1,0 +1,1919 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Format D+++ Visualizer v51 (UX Enhanced)</title>
+    
+    <!-- Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <style>
+        /* --- Design Tokens (B-01) --- */
+        :root {
+            --bg-color: #f8fafc;
+            --panel-bg: #ffffff;
+            --border-color: #e2e8f0;
+            --primary: #3b82f6;
+            --action: #ef4444;
+            --update: #6366f1;
+            --entry: #22c55e;
+            --check: #ec4899;
+            --warn: #f59e0b;
+            --text-main: #1e293b;
+            --line-height: 21px; /* SSOT: Gutter Sync (B-02) */
+        }
+
+        body {
+            margin: 0; height: 100vh; display: flex; flex-direction: column;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--bg-color); color: var(--text-main); overflow: hidden;
+        }
+
+        /* --- Header --- */
+        header {
+            height: 50px; border-bottom: 1px solid var(--border-color); background: var(--panel-bg);
+            display: flex; align-items: center; padding: 0 1rem; justify-content: space-between;
+            z-index: 100;
+        }
+
+        .toolbar { display: flex; gap: 8px; align-items: center; }
+        .tool-sep { width: 1px; height: 18px; background: var(--border-color); margin: 0 4px; }
+
+        /* --- Layout: 3-Pane Structure (B-05) --- */
+        #workspace { display: flex; flex: 1; overflow: hidden; transition: flex-direction 0.3s ease; }
+        .pane-left { width: 35%; min-width: 320px; display: flex; border-right: 1px solid var(--border-color); background: #fff; position: relative; }
+        .pane-right { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+        /* --- Editor (B-02) --- */
+        #gutter {
+            width: 45px; background: #f1f5f9; border-right: 1px solid var(--border-color);
+            text-align: right; padding: 10px 5px; font-family: 'JetBrains Mono', monospace;
+            font-size: 13px; line-height: var(--line-height); color: #94a3b8; overflow: hidden; user-select: none;
+        }
+        #editor {
+            flex: 1; border: none; padding: 10px; resize: none; outline: none;
+            font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: var(--line-height);
+            white-space: pre; overflow: auto; color: #0f172a; background: transparent;
+        }
+
+        /* --- Visualizer --- */
+        #diagram-container { flex: 1; overflow: auto; background: #fff; position: relative; display: flex; justify-content: center; align-items: flex-start; }
+        #diagram { transition: transform 0.2s ease-out; transform-origin: top center; padding: 40px; }
+
+        /* --- Bottom Panel --- */
+        #bottom-panel { height: 320px; border-top: 1px solid var(--border-color); background: #fff; display: flex; flex-direction: column; z-index: 50; transition: height 0.3s ease; }
+        .tabs { display: flex; border-bottom: 1px solid var(--border-color); background: #f8fafc; flex-shrink: 0; }
+        .tab-btn {
+            padding: 10px 20px; font-size: 12px; cursor: pointer; border: none; background: transparent;
+            border-right: 1px solid var(--border-color); color: #64748b; font-weight: 500; display: flex; align-items: center; gap: 6px;
+        }
+        .tab-btn.active { background: #fff; color: var(--primary); border-bottom: 2px solid var(--primary); font-weight: 700; }
+        .tab-pane { flex: 1; display: none; overflow: hidden; flex-direction: column; }
+        .tab-pane.active { display: flex; }
+
+        /* --- UX-INT: Integrated Operation Panel --- */
+        .manual-layout { display: flex; flex: 1; overflow: hidden; }
+        .var-section { flex: 1; overflow: auto; border-right: 1px solid var(--border-color); }
+        #trigger-panel { width: 280px; background: #fcfcfd; display: flex; flex-direction: column; padding: 10px; gap: 8px; overflow-y: auto; }
+        .panel-label { font-size: 10px; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px; padding-left: 4px; }
+        .trigger-btn { width: 100%; justify-content: flex-start; text-align: left; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: #fff; font-size: 12px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 8px; }
+        .trigger-btn:hover { border-color: var(--primary); background: #eff6ff; }
+        .trigger-btn i { font-size: 16px; color: var(--primary); }
+
+        /* --- Controls --- */
+        button {
+            padding: 6px 12px; border: 1px solid var(--border-color); background: #fff; border-radius: 4px;
+            cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; display: flex; align-items: center; gap: 6px;
+        }
+        button:hover { background: #f1f5f9; border-color: #cbd5e1; }
+        button.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+        button.action { color: var(--action); border-color: #fca5a5; }
+
+        /* --- HACE LEDs & Status (UX-03) --- */
+        .led-panel { display: flex; gap: 12px; margin-left: auto; align-items: center; padding-right: 12px; }
+        #sim-status { font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 1px; }
+        .led-label { font-size: 10px; color: #94a3b8; display: flex; align-items: center; gap: 4px; font-weight: 600; text-transform: uppercase; }
+        .led { width: 8px; height: 8px; border-radius: 50%; background: #e2e8f0; transition: all 0.3s; }
+        .led-label.active { color: var(--text-main); }
+        
+        #phase-exiting.active .led { background: var(--action); box-shadow: 0 0 8px var(--action); }
+        #phase-acting.active .led { background: var(--action); box-shadow: 0 0 8px var(--action); }
+        #phase-updating.active .led { background: var(--update); box-shadow: 0 0 8px var(--update); }
+        #phase-entering.active .led { background: var(--entry); box-shadow: 0 0 8px var(--entry); }
+        #phase-checking.active .led { background: var(--check); box-shadow: 0 0 8px var(--check); }
+
+        /* --- UX-LINK: Highlighting (UX-LINK) --- */
+        .diagram-highlight rect, .diagram-highlight polygon { filter: drop-shadow(0 0 8px var(--primary)); stroke: var(--primary) !important; stroke-width: 4px !important; }
+        .state-active rect, .state-active polygon { fill: #ccfbf1 !important; stroke: #0d9488 !important; stroke-width: 4px !important; }
+        .edge-active .edgeLabel { background: #ffedd5 !important; border: 2px solid #f97316 !important; color: #c2410c !important; font-weight: bold !important; border-radius: 4px; padding: 2px 4px; }
+        .cov-visited rect, .cov-visited polygon { stroke: var(--primary) !important; stroke-width: 2.5px !important; fill: #eff6ff !important; }
+
+        /* --- Responsive: Portrait Mode (RESP) --- */
+        @media (orientation: portrait) {
+            #workspace { flex-direction: column; }
+            .pane-left { width: 100%; height: 180px; border-right: none; border-bottom: 1px solid var(--border-color); }
+            .pane-right { flex: 1; }
+            #bottom-panel { height: 400px; }
+            .manual-layout { flex-direction: column; }
+            .var-section { border-right: none; border-bottom: 1px solid var(--border-color); max-height: 200px; }
+            #trigger-panel { width: 100%; height: 180px; }
+            header .toolbar span { display: none; } /* ヘッダーの文字を一部隠してスペース確保 */
+        }
+
+        /* --- Atomic Lock --- */
+        body.sim-busy #editor { opacity: 0.5; pointer-events: none; }
+        body.sim-busy button:not(#btn-step) { opacity: 0.5; pointer-events: none; }
+
+        /* --- Tables --- */
+        .table-container { width: 100%; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th { background: #f8fafc; position: sticky; top: 0; z-index: 10; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border-color); color: #64748b; }
+        td { padding: 8px 12px; border-bottom: 1px solid var(--border-color); }
+
+        /* --- UI Elements --- */
+        #code-modal { position: fixed; inset: 0; background: rgba(15,23,42,0.6); backdrop-filter: blur(4px); display: none; justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { width: 80%; height: 80%; background: #fff; border-radius: 12px; display: flex; flex-direction: column; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); overflow: hidden; }
+        #cpp-output { flex: 1; margin: 0; background: #1e293b; color: #e2e8f0; padding: 20px; font-family: 'JetBrains Mono', monospace; font-size: 13px; overflow: auto; outline: none; border: none; resize: none; }
+        #toast { position: fixed; bottom: 340px; right: 24px; background: #1e293b; color: #fff; padding: 10px 16px; border-radius: 8px; font-size: 12px; transform: translateY(100px); opacity: 0; transition: all 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28); z-index: 2000; }
+        #toast.show { transform: translateY(0); opacity: 1; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="toolbar">
+        <h1 style="margin:0; font-size:1.1rem; color:var(--primary); font-weight:800; letter-spacing:-0.5px">D+++ <span>Visualizer v51</span></h1>
+        <div class="tool-sep"></div>
+        <button id="btn-layout-td" title="Top-Down"><i class="ph ph-layout"></i> TD</button>
+        <button id="btn-layout-lr" title="Left-Right"><i class="ph ph-layout ph-rotate-90"></i> LR</button>
+        <div class="tool-sep"></div>
+        <button id="btn-zoom-out"><i class="ph ph-magnifying-glass-minus"></i></button>
+        <button id="btn-zoom-reset">100%</button>
+        <button id="btn-zoom-in"><i class="ph ph-magnifying-glass-plus"></i></button>
+    </div>
+    <div class="led-panel">
+        <!-- UX-03: READY Status Display Area -->
+        <div id="sim-status" style="margin-right:15px; font-weight:800; color:var(--primary);">OFFLINE</div>
+        
+        <div class="led-label" id="phase-exiting"><span class="led"></span>Exit</div>
+        <div class="led-label" id="phase-acting"><span class="led"></span>Act</div>
+        <div class="led-label" id="phase-updating"><span class="led"></span>Update</div>
+        <div class="led-label" id="phase-entering"><span class="led"></span>Enter</div>
+        <div class="led-label" id="phase-checking"><span class="led"></span>Check</div>
+        <div class="tool-sep"></div>
+        <button id="btn-download" title="Export SVG"><i class="ph ph-image"></i></button>
+        <button id="btn-gen-cpp" class="primary"><i class="ph ph-code"></i> <span>Export C++</span></button>
+    </div>
+</header>
+
+<div id="workspace">
+    <div class="pane-left">
+        <div id="gutter"></div>
+        <textarea id="editor" spellcheck="false">// Format D+++ v51 Sample
+// ==========================================
+
+// Format D+++ V51 System Model: HACE Sim (Fixed v2)
+// ===============================================
+
+Table A: States
+| ID                   | Entry              | Exit             | Invariant        |
+|:---------------------|:-------------------|:-----------------|:-----------------|
+| Sys.Boot             | domReady=false     | -                | -                |
+| Sys.Editor           | status="Editing"   | -                | -                |
+| Sys.Parser           | status="Parsing"   | -                | -                |
+| Sys.Sim              | showPanel=true     | -                | -                |
+| Sys.Sim.Boot         | bootStatus="Start" | -                | -                |
+| Sys.Sim.Idle         | status="READY"     | -                | -                |
+| Sys.Sim.Phase        | busy=true          | -                | -                |
+| Sys.Sim.Phase.Exit   | phase="Exit"       | -                | -                |
+| Sys.Sim.Phase.Act    | phase="Act"        | -                | -                |
+| Sys.Sim.Phase.Update | phase="Update"     | -                | -                |
+| Sys.Sim.Phase.Enter  | phase="Enter"      | -                | depth<10         |
+| Sys.Sim.Phase.Check  | phase="Check"      | -                | -                |
+| Sys.Sim.Error        | status="LOCK"      | -                | -                |
+| Sys.Batch            | status="Testing"   | -                | -                |
+
+Table B: Transitions
+| Priority | Source               | Trigger       | Guard           | Action            | Target               |
+|:---------|:---------------------|:--------------|:----------------|:------------------|:---------------------|
+| High     | Sys.Boot             | load          | -               | domReady=true     | Sys.Editor           |
+| Default  | Sys.Parser           | complete      | -               | parseOK=true      | Sys.Editor           |
+| Default  | Sys.Editor           | btn_start     | parseOK==true   | ctxInit=true      | Sys.Sim.Boot         |
+| Default  | Sys.Editor           | input         | -               | debounce=500      | Sys.Parser           |
+| High     | Sys.Sim.Boot         | auto          | -               | -                 | Sys.Sim.Phase.Enter  |
+| Default  | Sys.Sim.Phase.Enter  | auto          | hasChild==true  | depth++           | Sys.Sim.Phase.Enter  |
+| Default  | Sys.Sim.Phase.Enter  | auto          | hasChild==false | -                 | Sys.Sim.Phase.Check  |
+| Default  | Sys.Sim.Phase.Check  | auto          | invOK==true     | -                 | Sys.Sim.Idle         |
+| High     | Sys.Sim.Phase.Check  | auto          | invOK==false    | lastErr="Inv"     | Sys.Sim.Error        |
+| Default  | Sys.Sim.Idle         | btn_step      | -               | -                 | Sys.Sim.Phase.Exit   |
+| Default  | Sys.Sim.Idle         | btn_trig      | guard==true     | -                 | Sys.Sim.Phase.Exit   |
+| Default  | Sys.Sim.Phase.Exit   | auto          | -               | -                 | Sys.Sim.Phase.Act    |
+| Default  | Sys.Sim.Phase.Act    | auto          | -               | -                 | Sys.Sim.Phase.Update |
+| Default  | Sys.Sim.Phase.Update | auto          | targetOK==true  | -                 | Sys.Sim.Phase.Enter  |
+| Default  | Sys.Sim.Idle         | btn_play      | -               | autoPlay=true     | Sys.Sim.Idle         |
+| Default  | Sys.Sim.* | btn_undo      | history>0       | -                 | Sys.Sim.Idle         |
+| Default  | Sys.Sim.* | input         | -               | -                 | Sys.Editor           |
+| Default  | Sys.Editor           | btn_test      | -               | coverage=0        | Sys.Batch            |
+| Default  | Sys.Batch            | complete      | -               | -                 | Sys.Editor           |
+
+Table C: Test Cases
+| ID       | Initial      | Context                                                         | Expected             |
+|:---------|:-------------|:----------------------------------------------------------------|:---------------------|
+| T01_Boot | Sys.Boot     | -                                                               | Sys.Editor           |
+| T02_Sim  | Sys.Editor   | parseOK=true, hasChild=false, invOK=true, targetOK=true, depth=0 | Sys.Sim.Idle         |</textarea>
+    </div>
+    <div class="pane-right">
+        <div id="diagram-container">
+            <div id="diagram"></div>
+        </div>
+
+        <div id="bottom-panel">
+            <div class="tabs">
+                <button class="tab-btn active" data-target="view-manual"><i class="ph ph-cpu"></i> Manual Sim (HACE)</button>
+                <button class="tab-btn" data-target="view-test"><i class="ph ph-test-tube"></i> Batch Runner</button>
+            </div>
+
+            <!-- Simulator Pane (UX-INT Integration) -->
+            <div id="view-manual" class="tab-pane active">
+                <div class="toolbar" style="padding: 10px; border-bottom: 1px solid var(--border-color)">
+                    <button id="btn-start" class="primary">Reset & Start</button>
+                    <button id="btn-step">Step Run</button>
+                    <button id="btn-sim-undo">Undo</button>
+                    <div class="tool-sep"></div>
+                    <input id="initial-context" type="text" placeholder="Init Context (e.g. x=1)" spellcheck="false" style="width:200px; padding:4px 8px; border:1px solid var(--border-color); border-radius:4px; font-size:11px">
+                    <button id="btn-sim-rec" class="action">● Record</button>
+                </div>
+                
+                <div class="manual-layout">
+                    <!-- Variable Table Area -->
+                    <div class="var-section">
+                        <div class="table-container">
+                            <table>
+                                <thead><tr><th style="width:140px">Variable</th><th>Value / Control</th></tr></thead>
+                                <tbody id="var-body"></tbody>
+                            </table>
+                        </div>
+                        <div id="analysis-panel" style="display:none">
+                            <div class="analysis-list" id="analysis-list"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- UX-INT: Integrated Trigger Panel -->
+                    <div id="trigger-panel">
+                        <div class="panel-label">Available Triggers</div>
+                        <!-- UIController._renderTriggers() will populate this -->
+                        <div style="font-size:11px; color:#94a3b8; text-align:center; padding-top:20px;">
+                            Start simulation to see triggers.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Test Pane -->
+            <div id="view-test" class="tab-pane">
+                <div class="toolbar" style="padding: 10px; border-bottom: 1px solid var(--border-color)">
+                    <button id="btn-run-test" class="primary">Execute All Cases</button>
+                    <div id="test-summary" style="font-size:12px; font-weight:600; margin-left:10px"></div>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead><tr><th style="width:80px">ID</th><th style="width:80px">Status</th><th>Actual State</th><th>Log / Diagnostic</th></tr></thead>
+                        <tbody id="test-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modals & UI Elements -->
+<div id="code-modal">
+    <div class="modal-content">
+        <div class="toolbar" style="padding:10px; border-bottom:1px solid var(--border-color)">
+            <span style="font-weight:700; font-size:13px; margin-left:8px">C++ Class Export</span>
+            <button id="btn-copy-code" style="margin-left:auto">Copy Code</button>
+            <button id="btn-close-modal">Close</button>
+        </div>
+        <textarea id="cpp-output" readonly></textarea>
+    </div>
+</div>
+<div id="toast">Message</div>
+
+<script>
+    /* ========================================================================
+       PASTE MODULES HERE (Step 1 to Step 8)
+       ======================================================================== */
+
+    // --- PASTE STEP 1: SafeEvaluator ---
+/**
+ * SafeEvaluator Class
+ * Format D+++ Visualizer v51 - Step 1: Logic Core Implementation
+ * * 仕様に基づき、eval()を使用せずに右辺式の評価およびコンテキストの更新を行います。
+ */
+class SafeEvaluator {
+  /**
+   * 右辺式（expr）をコンテキスト（ctx）に基づいて評価します。
+   * * @param {string} expr - 評価する数式または論理式
+   * @param {object} ctx - 変数スコープとなるコンテキストオブジェクト
+   * @returns {*} 評価結果
+   */
+  evaluateRHS(expr, ctx) {
+    try {
+      // コンテキストのキーと値を取得して関数の引数として展開
+      const keys = Object.keys(ctx);
+      const values = Object.values(ctx);
+      
+      // セキュリティ上の制約により eval() は禁止。
+      // new Function により、ctx内の変数名を変数として扱えるサンドボックス的な関数を作成。
+      const evaluator = new Function(...keys, `return (${expr});`);
+      
+      // 関数を実行し、ctxの値をそれぞれの変数名に割り当てて評価
+      return evaluator(...values);
+    } catch (error) {
+      // エラーは executeAction の try-catch でハンドルされるため再送
+      throw error;
+    }
+  }
+
+  /**
+   * 1行のアクション文字列を解析し、ctxを更新します。
+   * テーブルBの優先順位に基づき正規表現でマッチングを行います。
+   * * @param {string} line - 実行するアクション文字列
+   * @param {object} ctx - 更新対象のコンテキスト
+   * @returns {object} 更新後のコンテキスト
+   */
+  executeAction(line, ctx) {
+    const s = line.trim();
+    let m;
+
+    try {
+      // L04: 論理反転代入 (Regex: /^([a-zA-Z_]\w*)\s*=\s*!(.+)$/)
+      if ((m = s.match(/^([a-zA-Z_]\w*)\s*=\s*!(.+)$/))) {
+        const [_, key, val] = m;
+        ctx[key] = !this.evaluateRHS(val, ctx);
+      } 
+      // L03: インクリメント (Regex: /^([a-zA-Z_]\w*)\s*(\+\+)$/)
+      else if ((m = s.match(/^([a-zA-Z_]\w*)\s*(\+\+)$/))) {
+        const [_, key] = m;
+        ctx[key] = Number(ctx[key]) + 1;
+      }
+      // L02: 加算代入 (Regex: /^([a-zA-Z_]\w*)\s*(\+=)\s*(.+)$/)
+      else if ((m = s.match(/^([a-zA-Z_]\w*)\s*(\+=)\s*(.+)$/))) {
+        const [_, key, __, val] = m;
+        ctx[key] = Number(ctx[key]) + Number(this.evaluateRHS(val, ctx));
+      }
+      // L01: 単純代入 (Regex: /^([a-zA-Z_]\w*)\s*=\s*(.+)$/)
+      else if ((m = s.match(/^([a-zA-Z_]\w*)\s*=\s*(.+)$/))) {
+        const [_, key, val] = m;
+        ctx[key] = this.evaluateRHS(val, ctx);
+      } 
+      // いずれのパターンにもマッチしない場合はパースエラー
+      else {
+        throw new Error("Pattern Mismatch");
+      }
+
+      return ctx;
+    } catch (e) {
+      // 仕様に基づき、特定のフォーマットでエラーをスロー
+      throw new Error("Logic Error at: " + line);
+    }
+  }
+}
+
+// モジュールとしてのエクスポートが必要な場合は以下を有効化
+// export default SafeEvaluator;
+
+
+
+    // --- PASTE STEP 2: DPlusPlusParser ---
+
+/**
+ * DPlusPlusParser Class (Upgraded Version)
+ * Format D+++ Visualizer v51 - Step 2: Parser Upgrade
+ * * 柔軟なセクション検出、Mermaid用IDサニタイズ、およびデータ構造の拡張を実装。
+ */
+class DPlusPlusParser {
+  /**
+   * Markdown形式のテキストを解析し、構造化データに変換します。
+   * @param {string} text - ソーステキスト
+   * @returns {object} { states, transitions, testCases }
+   */
+  parse(text) {
+    const lines = text.split(/\r?\n/);
+    const result = {
+      states: [],
+      transitions: [],
+      testCases: []
+    };
+
+    let currentMode = null; // 'A', 'B', 'C' または null
+
+    lines.forEach((line, index) => {
+      const trimmed = line.trim();
+
+      // 基本ガード: コメント行（//）および完全な空行を無視
+      if (!trimmed || trimmed.startsWith('//')) return;
+
+      // P-01: 柔軟なセクション検出 (Flex-Section Match)
+      // 正規表現により、#の見出し、前後の空白、大文字小文字を許容して検知
+      if (/^#*\s*Table\s+A/i.test(trimmed)) { 
+        currentMode = 'A'; 
+        return; 
+      }
+      if (/^#*\s*Table\s+B/i.test(trimmed)) { 
+        currentMode = 'B'; 
+        return; 
+      }
+      if (/^#*\s*Table\s+C/i.test(trimmed)) { 
+        currentMode = 'C'; 
+        return; 
+      }
+
+      // 区切り行の判定 (パイプ、コロン、ハイフン、スペースのみの行を排除)
+      if (/^[|:\-\s]+$/.test(trimmed)) return;
+
+      // データ行のパース（パイプを含まない行はデータではないため無視）
+      if (!trimmed.includes('|')) return;
+
+      const row = this._parseRow(trimmed);
+      if (!row || row.length === 0) return;
+
+      // ヘッダー除外ロジック: 予約語を検知してスキップ
+      const firstCell = row[0].toLowerCase();
+      const headerKeywords = ["id", "state id", "priority", "case id"];
+      if (headerKeywords.includes(firstCell)) return;
+
+      // 空データのガード (すべてのセルが空、または "-" のみの行を排除)
+      const isAllEmpty = row.every(cell => {
+        const c = cell.trim();
+        return c === "" || c === "-";
+      });
+      if (isAllEmpty) return;
+
+      // 各セルの値を加工 (P-02: '-' は null または空文字として扱う)
+      const data = row.map(cell => (cell.trim() === '-' ? null : cell.trim()));
+      const lineIndex = index;
+
+      // 現在のモードに応じたデータ抽出およびサニタイズ (P-03)
+      switch (currentMode) {
+        case 'A': // States (Table A)
+          if (data.length < 4) return;
+          const stateId = data[0];
+          result.states.push({
+            id: stateId,                    // 元のID (シミュレータの論理用)
+            safeId: this._getSafeId(stateId), // P-02, P-03: 描画専用の安全なID
+            entry: data[1] || "",
+            exit: data[2] || "",
+            invariant: data[3] || "",
+            lineIndex
+          });
+          break;
+
+        case 'B': // Transitions (Table B)
+          if (data.length < 6) return;
+          const sourceId = data[1];
+          const targetId = data[5];
+          result.transitions.push({
+            priority: data[0],
+            source: sourceId,
+            sourceSafeId: this._getSafeId(sourceId), // P-03: Sourceのサニタイズ
+            trigger: data[2],
+            guard: data[3] || "",
+            action: data[4] || "",
+            target: targetId,                        // 元のTarget ID
+            targetSafeId: this._getSafeId(targetId), // P-03: Targetのサニタイズ
+            lineIndex
+          });
+          break;
+
+        case 'C': // TestCases (Table C)
+          if (data.length < 4) return;
+          result.testCases.push({
+            id: data[0],
+            initialState: data[1],
+            context: data[2] || "{}",
+            expectedTarget: data[3],
+            lineIndex
+          });
+          break;
+      }
+    });
+
+    return result;
+  }
+
+  /**
+   * P-02: Mermaid等の描画ライブラリで安全に扱えるIDを生成します。
+   * * 1. ドット "." をアンダースコア "_" に置換。
+   * 2. 英数字とアンダースコア以外の記号を削除。
+   * 3. 数字から始まる場合は先頭に "_" を付与 (CSS/SVG制約対策)。
+   * * @private
+   * @param {string} id - 元のID文字列
+   * @returns {string} サニタイズ済みID
+   */
+  _getSafeId(id) {
+    if (!id) return null;
+    if (id === "*") return "wildcard_ANY"; // 特殊記号 "*" の明示的処理
+    
+    return id
+      .replace(/\./g, '_')           // ドットを置換
+      .replace(/[^a-zA-Z0-9_]/g, '') // 英数字とアンダースコア以外を排除
+      .replace(/^(\d)/, '_$1');      // 先頭が数字の場合は "_" を付与
+  }
+
+  /**
+   * パイプで区切られた行を分解します。
+   * @private
+   * @param {string} line - 1行の文字列
+   * @returns {string[]} トリム済みのセル配列
+   */
+  _parseRow(line) {
+    const placeholder = "__ESCAPED_PIPE__";
+    const protectedLine = line.replace(/\\\|/g, placeholder);
+
+    return protectedLine
+      .trim()
+      .replace(/^\||\|$/g, '')
+      .split('|')
+      .map(cell => {
+        return cell.trim().replace(new RegExp(placeholder, 'g'), '|');
+      });
+  }
+}
+
+
+
+    // --- PASTE STEP 3: ContextManager ---
+/**
+ * ContextManager Class (Extended for V51/HACE)
+ * Format D+++ Visualizer v51 - Step 3: Context Manager Implementation
+ * 状態遷移中の変数を管理し、履歴復元・トランザクション保護・一括更新をサポートします。
+ */
+class ContextManager {
+  /**
+   * コンストラクタ
+   * @param {object} initialData - 初期コンテキストデータ
+   */
+  constructor(initialData = {}) {
+    // D-01: 初期データも参照を切るためにディープコピー
+    this._activeContext = this._deepCopy(initialData);
+    this._shadowContext = null;
+    console.log("[ContextManager] Initialized", this._activeContext);
+  }
+
+  /**
+   * トランザクションを開始し、現在の状態をバックアップします。
+   */
+  beginTransaction() {
+    // D-01: 現在の状態のディープコピーをバックアップとして保存
+    this._shadowContext = this._deepCopy(this._activeContext);
+    console.log("[ContextManager] Transaction Started (Backup created)");
+  }
+
+  /**
+   * トランザクションを確定し、バックアップを破棄します。
+   */
+  commit() {
+    this._shadowContext = null;
+    console.log("[ContextManager] Commit (Backup cleared)");
+  }
+
+  /**
+   * トランザクションを破棄し、開始時の状態に復元します。
+   * M-03: 復元時も必ずディープコピーを行い、バックアップ元との参照を遮断します。
+   */
+  rollback() {
+    // D-02: shadowContext が存在しない場合は警告のみ
+    if (!this._shadowContext) {
+      console.warn("[ContextManager] Rollback failed: No shadow context exists.");
+      return;
+    }
+    // M-03: shadowContextそのものではなく、そのクローンをactiveに設定
+    this._activeContext = this._deepCopy(this._shadowContext);
+    this._shadowContext = null;
+    console.log("[ContextManager] Rollback (State restored safely)");
+  }
+
+  /**
+   * M-01: 履歴スナップショットからの完全復元
+   * UIのUndo機能などで使用。
+   * @param {object} snapshot - 復元したい過去のコンテキストオブジェクト
+   */
+  restoreSnapshot(snapshot) {
+    if (!snapshot) return;
+    // M-01, M-04: 参照を完全に切りつつ、データ型を維持して上書き
+    this._activeContext = this._deepCopy(snapshot);
+    console.log("[ContextManager] Snapshot Restored");
+  }
+
+  /**
+   * M-02: 複数変数の安全な一括更新
+   * @param {object} data - マージする変数セット
+   */
+  updateAll(data) {
+    if (typeof data !== 'object' || data === null) return;
+    
+    // M-02: 各値を個別にディープコピーしてマージ（参照汚染の防止）
+    Object.keys(data).forEach(key => {
+      this._activeContext[key] = this._deepCopy(data[key]);
+    });
+    console.log("[ContextManager] Bulk Update performed", data);
+  }
+
+  /**
+   * 単一コンテキスト値の更新
+   * @param {string} key - 変数名
+   * @param {*} val - 新しい値
+   */
+  update(key, val) {
+    this._activeContext[key] = this._deepCopy(val);
+  }
+
+  /**
+   * コンテキストから値を取得
+   * @param {string} key - 変数名
+   * @returns {*} 値
+   */
+  get(key) {
+    return this._activeContext[key];
+  }
+
+  /**
+   * 現在のコンテキストの完全なコピー（スナップショット）を取得
+   * @returns {object} 現在のコンテキストのディープコピー
+   */
+  getSnapshot() {
+    // D-03: 外部での変更が内部に影響しないよう、ディープコピーを返す
+    return this._deepCopy(this._activeContext);
+  }
+
+  /**
+   * M-04: オブジェクトのディープコピー（JSON方式）
+   * プリミティブ型（boolean, number, string）の整合性を維持しつつ参照を遮断します。
+   * @private
+   */
+  _deepCopy(obj) {
+    if (obj === undefined) return undefined;
+    try {
+      return JSON.parse(JSON.stringify(obj));
+    } catch (e) {
+      console.error("[ContextManager] Deep Copy Error", e);
+      return obj; // 失敗時はフォールバック
+    }
+  }
+}
+
+// export default ContextManager;
+
+
+
+
+
+    // --- PASTE STEP 4: AtomicSimulator ---
+// --- PASTE STEP 4: AtomicSimulator ---
+/**
+ * AtomicSimulator Class (Fixed Boot Sequence)
+ * Format D+++ Visualizer v51 - Step 4.4: Boot Loop Fix
+ * * 初期化(Boot)時にIdle状態になるまでステップを進行させ、Busyロックを防ぎます。
+ */
+class AtomicSimulator {
+  /**
+   * @param {Array} states - Parserから出力された状態定義リスト
+   * @param {Object} ctxManager - ContextManagerのインスタンス
+   * @param {Object} evaluator - SafeEvaluatorのインスタンス
+   * @param {Object} callbacks - UI通知用コールバック ({ onUpdate: (sim) => void })
+   */
+  constructor(states, ctxManager, evaluator, callbacks) {
+    this.stateMap = new Map(states.map(s => [s.id, s]));
+    this.ctxManager = ctxManager;
+    this.evaluator = evaluator;
+    this.callbacks = callbacks;
+
+    this.simState = "Idle";
+    this.currentStateID = states.length > 0 ? states[0].id : null;
+    this.currentTransition = null;
+    this.lastError = null;
+
+    this.history = []; 
+    this.isRecording = false;
+    this.recordLog = []; 
+  }
+
+  /**
+   * [Fix] シミュレーションの起動シーケンス
+   * Idle状態またはエラーになるまでステップを強制進行させます。
+   */
+  boot() {
+    if (!this.currentStateID) return;
+
+    try {
+      console.log(`[HACE] Booting simulator at initial state: ${this.currentStateID}`);
+      
+      this.ctxManager.beginTransaction();
+      this.simState = "Entering";
+
+      // ★修正ポイント: Idle(待機) または Error_Lock になるまでループ実行
+      let safetyCounter = 0;
+      while (this.simState !== "Idle" && this.simState !== "Error_Lock") {
+        this.step();
+        safetyCounter++;
+        if (safetyCounter > 100) {
+            throw new Error("Boot Infinite Loop: Check Entry/Auto-Entry logic.");
+        }
+      }
+      
+    } catch (e) {
+      this._handleFailure(e.message);
+    }
+  }
+
+  /**
+   * 遷移トリガーを受け取り、遷移シーケンスを開始します。
+   */
+  trigger(transition) {
+    if (this.simState !== "Idle") return;
+    
+    this.history.push({
+      state: this.currentStateID,
+      context: this.ctxManager.getSnapshot()
+    });
+
+    this.currentTransition = transition;
+    this.lastError = null;
+    this.ctxManager.beginTransaction();
+    this.simState = "Exiting";
+    this._syncUI();
+  }
+
+  /**
+   * シミュレーションを1ステップ進めます。
+   */
+  step() {
+    if (this.simState === "Idle" || this.simState === "Error_Lock") return;
+
+    try {
+      switch (this.simState) {
+        case "Exiting":  this._handleExiting();  break;
+        case "Acting":   this._handleActing();   break;
+        case "Updating": this._handleUpdating();  break;
+        case "Entering": this._handleEntering();  break; 
+        case "Checking": this._handleChecking();  break;
+      }
+    } catch (error) {
+      this._handleFailure(error.message);
+    }
+
+    this._syncUI();
+  }
+
+  _handleEntering(depth = 0) {
+    if (depth > 10) throw new Error("Auto-Entry loop detected.");
+
+    const target = this.stateMap.get(this.currentStateID);
+    
+    // Entry Action
+    if (target && target.entry && target.entry !== "-") {
+      this._runAction(target.entry);
+    }
+
+    // Auto-Entry Logic
+    const parentId = this.currentStateID;
+    const parentDotCount = parentId.split('.').length - 1;
+    
+    const childId = Array.from(this.stateMap.keys()).find(id => {
+      return id.startsWith(parentId + ".") && (id.split('.').length - 1 === parentDotCount + 1);
+    });
+
+    if (childId) {
+      console.log(`[HACE] Auto-entering child state: ${childId}`);
+      this.currentStateID = childId;
+      return this._handleEntering(depth + 1);
+    } else {
+      this.simState = "Checking";
+    }
+  }
+
+  _runAction(code) {
+    if (!code || code === "-") return;
+    try {
+      const snap = this.ctxManager.getSnapshot();
+      const updatedCtx = this.evaluator.executeAction(code, snap);
+      
+      if (typeof this.ctxManager.updateAll === "function") {
+        this.ctxManager.updateAll(updatedCtx);
+      } else {
+        for (const [key, value] of Object.entries(updatedCtx)) {
+          this.ctxManager.update(key, value);
+        }
+      }
+    } catch (e) {
+      throw new Error(`Action Execution Error: ${e.message}`);
+    }
+  }
+
+  _recursiveCheck(stateId) {
+    if (!stateId) return true;
+    const state = this.stateMap.get(stateId);
+    
+    if (state && state.invariant && state.invariant !== "-") {
+      try {
+        const result = this.evaluator.evaluateRHS(state.invariant, this.ctxManager.getSnapshot());
+        if (!result) return false;
+      } catch (e) {
+        throw new Error(`Invariant Error in "${stateId}": ${e.message}`);
+      }
+    }
+
+    const parts = stateId.split('.');
+    if (parts.length > 1) {
+      parts.pop();
+      return this._recursiveCheck(parts.join('.'));
+    }
+    return true;
+  }
+
+  _handleExiting() {
+    const source = this.stateMap.get(this.currentTransition.source);
+    if (source && source.exit && source.exit !== "-") this._runAction(source.exit);
+    this.simState = "Acting";
+  }
+
+  _handleActing() {
+    if (this.currentTransition.action && this.currentTransition.action !== "-") {
+      this._runAction(this.currentTransition.action);
+    }
+    this.simState = "Updating";
+  }
+
+  _handleUpdating() {
+    const targetID = this.currentTransition.target || this.currentTransition.source;
+    if (!this.stateMap.has(targetID)) throw new Error(`Target state "${targetID}" not found.`);
+    this.currentStateID = targetID;
+    this.simState = "Entering";
+  }
+
+  _handleChecking() {
+    const isValid = this._recursiveCheck(this.currentStateID);
+    if (isValid) {
+      this.history.push({
+        state: this.currentStateID,
+        context: this.ctxManager.getSnapshot()
+      });
+      this.ctxManager.commit();
+      this.simState = "Idle";
+      this.currentTransition = null;
+    } else {
+      throw new Error(`Invariant violation at state: ${this.currentStateID}`);
+    }
+  }
+
+  _handleFailure(msg) {
+    console.error(`[AtomicSimulator] Error: ${msg}`);
+    this.lastError = msg;
+    this.simState = "Error_Lock";
+    this.ctxManager.rollback();
+    if (this.history.length > 0) {
+      this.currentStateID = this.history[this.history.length - 1].state;
+    }
+  }
+
+  undo() {
+    if (this.simState !== "Idle" || this.history.length === 0) return;
+    const lastRecord = this.history.pop();
+    this.currentStateID = lastRecord.state;
+    if (typeof this.ctxManager.restoreSnapshot === "function") {
+      this.ctxManager.restoreSnapshot(lastRecord.context);
+    }
+    this._syncUI();
+  }
+
+  toggleRecording() {
+    this.isRecording = !this.isRecording;
+    if (this.isRecording) this.recordLog = [];
+    this._syncUI();
+  }
+
+  _syncUI() {
+    if (this.callbacks && typeof this.callbacks.onUpdate === "function") {
+      this.callbacks.onUpdate(this);
+    }
+  }
+}
+
+// --- PASTE STEP 5: TestRunner ---
+/**
+ * TestRunner Class (Fixed: Auto-Chain & Null-Safe)
+ * Format D+++ Visualizer v51 - Step 5
+ * * "auto" トリガーを自動的に連鎖実行し、途中で止まらないように修正済み。
+ */
+class TestRunner {
+  constructor(evaluator) {
+    this.evaluator = evaluator;
+  }
+
+  runAll(testCases, states, transitions) {
+    const visitedLines = new Set();
+    const results = testCases.map(tc => {
+      return this._runSingleCase(tc, states, transitions, visitedLines);
+    });
+    return { results, coverage: { visitedLines } };
+  }
+
+  _runSingleCase(testCase, states, transitions, visitedLines) {
+    const logs = []; 
+    try {
+      // 1. Setup
+      const initialCtx = this._parseContext(testCase.context);
+      const ctxManager = new ContextManager(initialCtx);
+      const simulator = new AtomicSimulator(states, ctxManager, this.evaluator, { onUpdate: () => {} });
+      
+      // 初期状態セット & Boot
+      simulator.currentStateID = testCase.initialState;
+      if (typeof simulator.boot === 'function') {
+        try { simulator.boot(); } catch(e) {}
+      }
+      logs.push(`Init:${simulator.currentStateID}`);
+
+      // カバレッジ記録
+      const startState = states.find(s => s.id === simulator.currentStateID);
+      if (startState) visitedLines.add(startState.lineIndex);
+
+      // 2. Initial Transition Search (最初のきっかけ)
+      let currentTrigger = this._findTrigger(transitions, simulator.currentStateID, ctxManager, null);
+      
+      // Bootで移動済みの場合のフォールバック
+      if (!currentTrigger && simulator.currentStateID !== testCase.initialState) {
+          currentTrigger = this._findTrigger(transitions, testCase.initialState, ctxManager, null);
+      }
+
+      if (!currentTrigger) {
+        return { 
+            id: testCase.id, status: "SKIP", actual: simulator.currentStateID, 
+            reason: `No valid transition from ${simulator.currentStateID}` 
+        };
+      }
+
+      // 3. Execution Loop (Auto-Chain) ★ここが重要
+      let chainCount = 0;
+      const MAX_CHAIN = 100;
+
+      // トリガーが見つかる限りループ（btn_start -> auto -> auto ...）
+      while (currentTrigger) {
+        logs.push(`Trig[${currentTrigger.trigger||"ε"}]->${currentTrigger.target||currentTrigger.source}`);
+        
+        // 遷移実行
+        simulator.trigger(currentTrigger);
+        visitedLines.add(currentTrigger.lineIndex);
+
+        // 安定するまでステップ実行
+        let stepCount = 0;
+        while (simulator.simState !== "Idle" && simulator.simState !== "Error_Lock") {
+          simulator.step();
+          const currentState = states.find(s => s.id === simulator.currentStateID);
+          if (currentState) visitedLines.add(currentState.lineIndex);
+          
+          stepCount++;
+          if (stepCount > 1000) throw new Error("Simulator Infinite Loop");
+        }
+
+        if (simulator.simState === "Error_Lock") {
+          logs.push("Error_Lock");
+          break;
+        }
+
+        if (++chainCount > MAX_CHAIN) {
+          logs.push("Chain_Limit");
+          break;
+        }
+
+        // ★次の "auto" トリガーを探す (連鎖)
+        currentTrigger = this._findTrigger(transitions, simulator.currentStateID, ctxManager, "auto");
+      }
+
+      // 4. Verdict (判定)
+      const actual = simulator.currentStateID;
+      const expected = testCase.expectedTarget;
+      
+      // Fuzzy Match (前方一致)
+      const isMatch = (actual === expected) || 
+                      (actual && actual.startsWith(expected + ".")) ||
+                      (expected && expected.startsWith(actual + "."));
+
+      const isSuccess = (simulator.simState === "Idle") && isMatch;
+      const logStr = logs.join(" > ");
+      
+      return {
+        id: testCase.id,
+        status: isSuccess ? "PASS" : "FAIL",
+        actual: actual,
+        reason: isSuccess ? "" : `${logStr} | Expected ${expected}`
+      };
+
+    } catch (e) {
+      return { id: testCase.id, status: "FAIL", actual: "ERROR", reason: `${e.message} | Log: ${logs.join(">")}` };
+    }
+  }
+
+  /**
+   * 遷移検索ヘルパー (Null-Safe)
+   */
+  _findTrigger(transitions, currentState, ctxManager, specificTrigger) {
+    const ctx = ctxManager.getSnapshot();
+    return transitions.find(t => {
+      if (!t.source) return false;
+
+      // Source Match
+      const srcMatch = (t.source.trim() === currentState.trim() || t.source === "*");
+      if (!srcMatch) return false;
+
+      // Trigger Match
+      if (specificTrigger) {
+        const trig = t.trigger || "";
+        if (trig.trim() !== specificTrigger) return false;
+      }
+
+      // Guard Check
+      try {
+        if (!t.guard || t.guard === "-") return true;
+        return this.evaluator.evaluateRHS(t.guard, ctx);
+      } catch (e) { return false; }
+    });
+  }
+
+  _parseContext(ctxStr) {
+    if (!ctxStr || ctxStr === "-") return {};
+    if (ctxStr.trim().startsWith('{')) { try { return JSON.parse(ctxStr); } catch (e) { return {}; } }
+    const obj = {};
+    ctxStr.split(',').forEach(pair => {
+      const parts = pair.split('=');
+      if (parts.length >= 2) {
+        const k = parts[0].trim();
+        const v = parts.slice(1).join('=').trim();
+        if (k) {
+            if (v === 'true') obj[k] = true;
+            else if (v === 'false') obj[k] = false;
+            else if (!isNaN(v) && v !== "") obj[k] = Number(v);
+            else obj[k] = v.replace(/^["']|["']$/g, '');
+        }
+      }
+    });
+    return obj;
+  }
+}
+
+
+    // --- PASTE STEP 7: DPlusPlusAnalyzer ---
+
+/**
+ * DPlusPlusAnalyzer Class
+ * Format D+++ Visualizer v51 - Step 7: Real-time Logic Analyzer
+ * パース済みのモデルデータを静的に解析し、論理的な不備（デッドロック、幽霊状態、競合等）を報告します。
+ */
+class DPlusPlusAnalyzer {
+  /**
+   * @param {object} data - DPlusPlusParser.parse() の戻り値 { states, transitions }
+   */
+  constructor(data) {
+    this.states = data.states || [];
+    this.transitions = data.transitions || [];
+    this.report = [];
+  }
+
+  /**
+   * 全ての解析項目を実行し、レポートを返します。
+   * @returns {Array} 解析結果オブジェクトの配列
+   */
+  analyzeAll() {
+    this.report = [];
+
+    this.checkUndefined();
+    this.checkReachability();
+    this.checkDeadlock();
+    this.scanConflicts();
+
+    return this.report;
+  }
+
+  /**
+   * A-04: 未定義ターゲット参照のチェック
+   * 遷移先として指定されているIDが States テーブルに存在するか確認します。
+   */
+  checkUndefined() {
+    const stateIds = new Set(this.states.map(s => s.id));
+
+    this.transitions.forEach(t => {
+      // "*" はワイルドカード、null/空文字はSource維持（P-03）のため除外
+      if (t.target && t.target !== "*" && !stateIds.has(t.target)) {
+        this.report.push({
+          type: "error",
+          id: "A-04",
+          message: `未定義の状態 "${t.target}" が遷移先として参照されています。`,
+          lineIndex: t.lineIndex
+        });
+      }
+    });
+  }
+
+  /**
+   * A-01: 到達不能（幽霊）状態のチェック
+   * 幅優先探索 (BFS) を用いて、初期状態から到達不可能な状態を特定します。
+   */
+  checkReachability() {
+    if (this.states.length === 0) return;
+
+    const initialId = this.states[0].id;
+    const visited = new Set();
+    const queue = [initialId];
+    visited.add(initialId);
+
+    // BFSによる探索
+    while (queue.length > 0) {
+      const current = queue.shift();
+      const outgoing = this.transitions.filter(t => t.source === current || t.source === "*");
+      
+      outgoing.forEach(t => {
+        const target = t.target || t.source; // 省略時は自分自身
+        if (target && !visited.has(target)) {
+          visited.add(target);
+          queue.push(target);
+        }
+      });
+    }
+
+    this.states.forEach(s => {
+      if (!visited.has(s.id)) {
+        this.report.push({
+          type: "warn",
+          id: "A-01",
+          message: `状態 "${s.id}" は初期状態から到達不可能な「幽霊状態」です。`,
+          lineIndex: s.lineIndex
+        });
+      }
+    });
+  }
+
+  /**
+   * A-02: デッドロック（行き止まり）検知
+   * 終了状態以外で、外部への遷移が一つも定義されていない状態を検知します。
+   */
+  checkDeadlock() {
+    this.states.forEach(s => {
+      // 慣習的に End や Final という名前の状態はデッドロック対象外とする
+      if (/^(End|Final|Stop)$/i.test(s.id)) return;
+
+      const hasOutgoing = this.transitions.some(t => t.source === s.id || t.source === "*");
+      if (!hasOutgoing) {
+        this.report.push({
+          type: "warn",
+          id: "A-02",
+          message: `状態 "${s.id}" に遷移後の出口が定義されていません（デッドロックの可能性）。`,
+          lineIndex: s.lineIndex
+        });
+      }
+    });
+  }
+
+  /**
+   * A-03: 論理競合（Smart Scan）
+   * 同一ソース・同一トリガーの遷移において、ガード条件が重複する可能性をサンプリング解析します。
+   */
+  scanConflicts() {
+    const groups = {};
+
+    // ソースとトリガーでグループ化
+    this.transitions.forEach(t => {
+      const key = `${t.source}-${t.trigger}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(t);
+    });
+
+    Object.values(groups).forEach(ts => {
+      if (ts.length < 2) return;
+
+      // 各遷移のペアを比較
+      for (let i = 0; i < ts.length; i++) {
+        for (let j = i + 1; j < ts.length; j++) {
+          if (this._isPotentiallyConflicting(ts[i].guard, ts[j].guard)) {
+            this.report.push({
+              type: "warn",
+              id: "A-03",
+              message: `遷移 "${ts[i].trigger}" のガード条件 "${ts[i].guard || 'true'}" と "${ts[j].guard || 'true'}" が同時に成立し、競合する可能性があります。`,
+              lineIndex: ts[j].lineIndex
+            });
+          }
+        }
+      }
+    });
+  }
+
+  /**
+   * ガード条件が論理的に重なる可能性があるかサンプリング評価します。
+   * @private
+   */
+  _isPotentiallyConflicting(g1, g2) {
+    // 両方空（true）なら確実に競合
+    if ((!g1 || g1 === "-") && (!g2 || g2 === "-")) return true;
+    
+    // 文字列の簡易比較
+    if (g1 === g2) return true;
+
+    // V46スタイルのサンプリング解析
+    // 数値の境界値などを抽出して評価するロジック（簡易版）
+    const sampleValues = [0, 1, -1, 10, 100];
+    const vars = this._extractVars(g1 + " " + g2);
+
+    try {
+      for (let v of sampleValues) {
+        const testCtx = {};
+        vars.forEach(name => testCtx[name] = v);
+        
+        const res1 = this._quickEval(g1, testCtx);
+        const res2 = this._quickEval(g2, testCtx);
+
+        if (res1 && res2) return true; // 特定の値で両方Trueになった
+      }
+    } catch (e) {
+      // 評価不能な場合は安全のため競合の可能性ありとはしない
+    }
+
+    return false;
+  }
+
+  /** ガード式から変数名を抽出 */
+  _extractVars(str) {
+    const matches = str.match(/[a-zA-Z_]\w*/g) || [];
+    return [...new Set(matches)].filter(m => !/^(true|false|null|undefined)$/.test(m));
+  }
+
+  /** 静的解析用の簡易評価器 */
+  _quickEval(expr, ctx) {
+    if (!expr || expr === "-") return true;
+    try {
+      const keys = Object.keys(ctx);
+      const vals = Object.values(ctx);
+      return new Function(...keys, `return (${expr})`)(...vals);
+    } catch (e) {
+      return false;
+    }
+  }
+}
+
+// export default DPlusPlusAnalyzer;
+
+
+
+    // --- PASTE STEP 8: DPlusPlusExporter ---
+
+/**
+ * DPlusPlusExporter Class
+ * Format D+++ Visualizer v51 - Step 8: Export & Integration
+ * 解析済みモデルからプロダクション用C++コードおよびSVG画像を生成します。
+ */
+class DPlusPlusExporter {
+  /**
+   * @param {object} uiController - 統合先のUIControllerインスタンス
+   */
+  constructor(uiController) {
+    this.ui = uiController;
+  }
+
+  /**
+   * E-01: C++ クラス生成
+   * 状態遷移モデルをプロダクションレベルの C++17 コードに変換します。
+   * @param {object} data - パース済みデータ { states, transitions }
+   * @returns {string} C++ ソースコード
+   */
+  generateCpp(data) {
+    const className = "StateMachine";
+    const states = data.states;
+    const transitions = data.transitions;
+
+    let code = `/**\n * Generated by Format D+++ Visualizer v51\n * Production-ready State Machine Implementation\n */\n`;
+    code += `#include <iostream>\n#include <string>\n#include <cstdint>\n\n`;
+
+    // 状態定義 (Enum Class)
+    code += `enum class State : uint8_t {\n`;
+    states.forEach(s => {
+      code += `    ${this._flattenState(s.id)},\n`;
+    });
+    code += `};\n\n`;
+
+    code += `class ${className} {\n`;
+    code += `public:\n`;
+    code += `    ${className}() : m_currentState(State::${this._flattenState(states[0].id)}) {}\n\n`;
+
+    // イベントハンドラ
+    code += `    void handleEvent(const std::string& event) {\n`;
+    code += `        switch (m_currentState) {\n`;
+
+    states.forEach(s => {
+      code += `            case State::${this._flattenState(s.id)}:\n`;
+      const outgoing = transitions.filter(t => t.source === s.id || t.source === "*");
+      
+      outgoing.forEach((t, idx) => {
+        const condition = idx === 0 ? "if" : "else if";
+        const guard = (t.guard && t.guard !== "-") ? ` && checkGuard("${t.guard}")` : "";
+        
+        code += `                ${condition} (event == "${t.trigger}"${guard}) {\n`;
+        code += `                    // Action: ${t.action || "none"}\n`;
+        if (t.exit && t.exit !== "-") code += `                    onExit${this._flattenState(s.id)}();\n`;
+        
+        const target = t.target || t.source;
+        code += `                    m_currentState = State::${this._flattenState(target)};\n`;
+        
+        const targetState = states.find(st => st.id === target);
+        if (targetState && targetState.entry && targetState.entry !== "-") {
+          code += `                    onEntry${this._flattenState(target)}();\n`;
+        }
+        code += `                }\n`;
+      });
+      code += `                break;\n`;
+    });
+
+    code += `            default: break;\n`;
+    code += `        }\n`;
+    code += `    }\n\n`;
+
+    code += `private:\n`;
+    code += `    State m_currentState;\n\n`;
+
+    // ガード・アクション用スタブメソッド
+    states.forEach(s => {
+      if (s.entry && s.entry !== "-") code += `    void onEntry${this._flattenState(s.id)}() { /* ${s.entry} */ }\n`;
+      if (s.exit && s.exit !== "-") code += `    void onExit${this._flattenState(s.id)}() { /* ${s.exit} */ }\n`;
+    });
+
+    code += `\n    bool checkGuard(const std::string& expr) { return true; } // Logic should be implemented here\n`;
+    code += `};\n`;
+
+    return code;
+  }
+
+  /**
+   * E-02: SVG ダウンロード
+   * Mermaidが生成したSVGをシリアライズしてファイルとして保存します。
+   */
+  downloadSvg() {
+    const svgElement = document.querySelector('#diagram svg');
+    if (!svgElement) {
+      console.error("SVG element not found.");
+      return;
+    }
+
+    try {
+      // SVGのシリアライズ
+      const serializer = new XMLSerializer();
+      let source = serializer.serializeToString(svgElement);
+
+      // XML宣言の追加
+      if (!source.match(/^<\\?xml/)) {
+        source = '<?xml version="1.0" standalone="no"?>\r\n' + source;
+      }
+
+      // Blob の作成とダウンロード実行
+      const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      
+      const downloadLink = document.createElement("a");
+      downloadLink.href = url;
+      downloadLink.download = `d_plus_plus_model_${Date.now()}.svg`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      
+      // リソース解放
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("SVG Export failed:", e);
+    }
+  }
+
+  /**
+   * E-03: コードハイライト統合
+   * 生成したコードをモーダルに表示します。
+   */
+  showCodeModal() {
+    const cppCode = this.generateCpp(this.ui.data);
+    
+    // UIController 側のモーダル要素を制御（V46準拠）
+    const modal = document.getElementById('code-modal');
+    const codeArea = document.getElementById('cpp-output');
+    
+    if (modal && codeArea) {
+      codeArea.textContent = cppCode;
+      modal.style.display = 'flex';
+      console.log("[Exporter] C++ code generated and displayed.");
+    } else {
+      // フォールバック: コンソール出力
+      console.log("--- Generated C++ Code ---\n", cppCode);
+      // navigator.clipboard.writeText(cppCode); // クリップボードへの自動コピー
+    }
+  }
+
+  /**
+   * E-04: 階層構造の平坦化
+   * 状態ID (A.B.C) を C++ 識別子 (A_B_C) に変換します。
+   * @private
+   */
+  _flattenState(id) {
+    if (!id) return "UNKNOWN";
+    return id.replace(/\./g, '_');
+  }
+}
+
+// export default DPlusPlusExporter;
+
+
+
+
+    // --- PASTE STEP 6: UIController ---
+
+
+// --- PASTE STEP 6: UIController ---
+/**
+ * UIController Class (Fixed: Batch Runner Event Listener)
+ * Format D+++ Visualizer v51 - Step 6.23: Restoration of Missing Events
+ * * 消失していたBatch Runnerボタンのイベントリスナーを復元しました。
+ */
+class UIController {
+  constructor() {
+    // 1. 依存ロジックインスタンス
+    this.evaluator = new SafeEvaluator();
+    this.parser = new DPlusPlusParser();
+    this.testRunner = new TestRunner(this.evaluator);
+    
+    // 2. 状態管理プロパティ
+    this.data = { states: [], transitions: [], testCases: [] };
+    this.simulator = null;
+    this.debounceTimer = null;
+    this.zoom = 1.0;
+    this.layout = 'TD'; 
+    this.coverageSet = new Set();
+    
+    // オートプレイ
+    this.playInterval = null;
+    this.playSpeed = 500; 
+    
+    // 変数メタデータ
+    this.varMeta = {};
+    this.varConfigs = {};
+
+    // 3. DOM要素のキャッシュ
+    this.els = {
+      editor: document.getElementById('editor'),
+      mermaidDiv: document.getElementById('diagram'),
+      varTable: document.getElementById('var-body'),
+      testTable: document.getElementById('test-body'),
+      tabs: document.querySelectorAll('.tab-btn'),
+      panes: document.querySelectorAll('.tab-pane'),
+      initialCtx: document.getElementById('initial-context'),
+      analysisPanel: document.getElementById('analysis-panel'),
+      analysisList: document.getElementById('analysis-list'),
+      toast: document.getElementById('toast'),
+      modal: document.getElementById('code-modal'),
+      cppOutput: document.getElementById('cpp-output'),
+      
+      // 統合ダッシュボード
+      simStatus: document.getElementById('sim-status'),
+      dashboardState: document.getElementById('dashboard-state'),
+      dashboardStep: document.getElementById('dashboard-step'),
+      dashboardCoverage: document.getElementById('dashboard-coverage'),
+      coverageProgress: document.getElementById('coverage-progress'),
+      dashboardLastTrans: document.getElementById('dashboard-last-trans'),
+      
+      // クイックアクションエリア
+      quickActions: document.getElementById('trigger-panel'),
+      
+      // 自動実行コントロール
+      btnPlay: document.getElementById('btn-play'),
+      btnPause: document.getElementById('btn-pause'),
+      speedRange: document.getElementById('speed-range')
+    };
+
+    window.ui = this;
+  }
+
+  /**
+   * UIの初期化と基本イベントのバインド
+   */
+  init() {
+    this.els.editor?.addEventListener('input', () => this.onEditorInput());
+
+    // シミュレーション制御
+    document.getElementById('btn-start')?.addEventListener('click', () => this.startSimulation());
+    document.getElementById('btn-step')?.addEventListener('click', () => { this.stopAutoPlay(); this.simulator?.step(); });
+    document.getElementById('btn-sim-undo')?.addEventListener('click', () => this.simulator?.undo());
+    
+    // オートプレイ制御
+    this.els.btnPlay?.addEventListener('click', () => this.startAutoPlay());
+    this.els.btnPause?.addEventListener('click', () => this.stopAutoPlay());
+    this.els.speedRange?.addEventListener('input', (e) => {
+      this.playSpeed = parseInt(e.target.value);
+      if (this.playInterval) this.startAutoPlay();
+    });
+
+    // ★修正箇所: Batch Runner ボタンのイベントを復元
+    document.getElementById('btn-run-test')?.addEventListener('click', () => {
+        this._showToast("Running Batch Tests...");
+        setTimeout(() => this.runBatchTest(), 50); // UI描画確保のためわずかに遅延
+    });
+
+    // 表示・エクスポート
+    document.getElementById('btn-layout-td')?.addEventListener('click', () => { this.layout = 'TD'; this._renderMermaid(); });
+    document.getElementById('btn-layout-lr')?.addEventListener('click', () => { this.layout = 'LR'; this._renderMermaid(); });
+    document.getElementById('btn-zoom-in')?.addEventListener('click', () => { this.zoom += 0.1; this._applyZoom(); });
+    document.getElementById('btn-zoom-out')?.addEventListener('click', () => { this.zoom = Math.max(0.1, this.zoom - 0.1); this._applyZoom(); });
+    document.getElementById('btn-zoom-reset')?.addEventListener('click', () => { this.zoom = 1.0; this._applyZoom(); });
+    document.getElementById('btn-gen-cpp')?.addEventListener('click', () => this.showCpp());
+    document.getElementById('btn-download')?.addEventListener('click', () => this.download());
+    document.getElementById('btn-close-modal')?.addEventListener('click', () => { if (this.els.modal) this.els.modal.style.display = 'none'; });
+    document.getElementById('btn-copy-code')?.addEventListener('click', () => {
+      this.els.cppOutput?.select();
+      document.execCommand('copy');
+      this._showToast("C++ Code Copied!");
+    });
+
+    this.els.tabs.forEach(tab => {
+      tab.addEventListener('click', (e) => this._switchTab(e.target.dataset.target));
+    });
+
+    this._parseAndRender();
+  }
+
+  onEditorInput() {
+    clearTimeout(this.debounceTimer);
+    this.debounceTimer = setTimeout(() => this._parseAndRender(), 500);
+  }
+
+  _parseAndRender() {
+    try {
+      const code = this.els.editor.value;
+      this.data = this.parser.parse(code); 
+      this._renderMermaid();               
+      if (typeof DPlusPlusAnalyzer !== 'undefined') {
+        const analyzer = new DPlusPlusAnalyzer(this.data);
+        this._showAnalysis(analyzer.analyzeAll());
+      }
+    } catch (e) { console.error("Parse Error:", e); }
+  }
+
+  startSimulation() {
+    try {
+      this.stopAutoPlay();
+      this.coverageSet.clear(); 
+      const finalContext = this._analyzeVariables(); 
+
+      try {
+        const inputData = this.testRunner._parseContext(this.els.initialCtx?.value || "");
+        Object.assign(finalContext, inputData);
+      } catch (e) { this._showToast("Context input error."); }
+      
+      const ctxManager = new ContextManager(finalContext); 
+      this.simulator = new AtomicSimulator(this.data.states, ctxManager, this.evaluator, { 
+        onUpdate: (sim) => this._updateSimUI(sim) 
+      });
+
+      this.simulator.boot();
+      this._updateSimUI(this.simulator);
+      this._showToast(`HACE Engine Booted: ${Object.keys(finalContext).length} variables.`);
+    } catch (e) { console.error("Simulator Start Error:", e); }
+  }
+
+  _updateSimUI(sim) {
+    const isBusy = sim.simState !== "Idle" && sim.simState !== "Error_Lock";
+    document.body.classList.toggle('sim-busy', isBusy);
+
+    document.querySelectorAll('.led-label').forEach(led => led.classList.remove('active'));
+    document.getElementById(`phase-${sim.simState.toLowerCase()}`)?.classList.add('active');
+
+    this._updateDashboard(sim);
+    this._renderQuickActions(sim);
+    this._renderVariableTable(sim.ctxManager.getSnapshot());
+    this._highlightActiveElements(sim);
+
+    if (sim.currentTransition) {
+      this._jumpToLine(sim.currentTransition.lineIndex);
+      this.coverageSet.add(sim.currentTransition.lineIndex);
+    }
+    
+    const undoBtn = document.getElementById('btn-sim-undo');
+    if (undoBtn) undoBtn.disabled = !sim.history || sim.history.length === 0;
+  }
+
+  _updateDashboard(sim) {
+    if (!this.els.simStatus) return;
+
+    if (sim.simState === "Error_Lock") {
+      this.els.simStatus.textContent = "ERROR_LOCK";
+      this.els.simStatus.className = ""; 
+      this.els.simStatus.style.color = "var(--action)";
+      this.stopAutoPlay();
+    } else if (sim.simState === "Idle") {
+      this.els.simStatus.textContent = `READY: ${sim.currentStateID}`;
+      this.els.simStatus.className = "status-ready";
+      this.els.simStatus.style.color = "var(--entry)";
+    } else {
+      this.els.simStatus.textContent = sim.simState.toUpperCase();
+      this.els.simStatus.className = "";
+      this.els.simStatus.style.color = "var(--primary)";
+    }
+
+    if (this.els.dashboardState) this.els.dashboardState.textContent = sim.currentStateID;
+    if (this.els.dashboardStep) this.els.dashboardStep.textContent = sim.history ? sim.history.length : 0;
+    
+    const cov = this._calculateCoverage();
+    if (this.els.dashboardCoverage) this.els.dashboardCoverage.textContent = `${cov}%`;
+    if (this.els.coverageProgress) this.els.coverageProgress.style.width = `${cov}%`;
+  }
+
+  _renderQuickActions(sim) {
+    const container = this.els.quickActions;
+    if (!container) return;
+
+    container.innerHTML = '<div class="panel-label">Quick Actions</div>';
+
+    if (sim.simState !== "Idle") {
+      container.innerHTML += '<div style="font-size:11px; color:#94a3b8; text-align:center; padding-top:10px;">Busy...</div>';
+      return;
+    }
+
+    const ctx = sim.ctxManager.getSnapshot();
+    const available = this.data.transitions.filter(t => {
+      const isMatch = (t.source === sim.currentStateID || t.source === '*');
+      if (!isMatch) return false;
+      try {
+        return this.evaluator.evaluateRHS(t.guard || "true", ctx);
+      } catch (e) { return false; }
+    });
+
+    if (available.length === 0) {
+      container.innerHTML += '<div style="font-size:11px; color:var(--action); text-align:center; padding-top:10px;">No Actions Available</div>';
+      return;
+    }
+
+    available.forEach(t => {
+      const btn = document.createElement('button');
+      btn.className = 'trigger-btn';
+      btn.innerHTML = `<i class="ph ph-lightning"></i> <span>${t.trigger || "ε"}</span>`;
+      btn.onmouseenter = () => this._highlightEdge(t.lineIndex, true);
+      btn.onmouseleave = () => this._highlightEdge(t.lineIndex, false);
+      btn.onclick = () => {
+        this.stopAutoPlay();
+        this.simulator.trigger(t);
+      };
+      container.appendChild(btn);
+    });
+  }
+
+  _highlightEdge(lineIndex, active) {
+    if (!this.els.mermaidDiv) return;
+    const labelBtn = this.els.mermaidDiv.querySelector(`.edge-label-btn[data-idx='${lineIndex}']`);
+    if (!labelBtn) return;
+
+    const edgeContainer = labelBtn.closest('.edgeLabel');
+    if (edgeContainer) {
+      edgeContainer.classList.toggle('edge-hover-active', active);
+      if (edgeContainer.id) {
+        const pathId = edgeContainer.id.replace(/^L-/, '');
+        const path = this.els.mermaidDiv.querySelector(`path[id*="${pathId}"]`);
+        if (path) path.classList.toggle('diagram-highlight', active);
+      }
+    }
+  }
+
+  _renderVariableTable(ctx) {
+    if (!this.els.varTable) return;
+    
+    this.els.varTable.innerHTML = Object.entries(ctx).map(([key, val]) => {
+      const type = this.varMeta[key] || typeof val;
+      let controlHtml = '';
+
+      if (type === 'boolean') {
+        const checked = (val === true || val === 1 || val === "true") ? 'checked' : '';
+        controlHtml = `<div class="var-row-inner" id="row-${key}"><input type="checkbox" ${checked} onchange="window.ui._onVarChange('${key}', this.checked)"><span class="var-val-label">${val ? 'TRUE' : 'FALSE'}</span></div>`;
+      } else if (type === 'number') {
+        if (!this.varConfigs[key]) this.varConfigs[key] = { min: 0, max: 100, step: 1 };
+        const cfg = this.varConfigs[key];
+        controlHtml = `<div class="var-row-inner number-ui" id="row-${key}">
+          <input type="number" class="cfg-input" value="${cfg.min}" onchange="window.ui._onConfigChange('${key}', 'min', this.value)">
+          <input type="range" class="var-slider" min="${cfg.min}" max="${cfg.max}" step="${cfg.step}" value="${val}" oninput="window.ui._onVarChange('${key}', parseFloat(this.value), true)">
+          <input type="number" class="cfg-input" value="${cfg.max}" onchange="window.ui._onConfigChange('${key}', 'max', this.value)">
+          <input type="number" class="val-input" value="${val}" step="${cfg.step}" oninput="window.ui._onVarChange('${key}', parseFloat(this.value))">
+        </div>`;
+      } else {
+        controlHtml = `<input type="text" class="val-input-text" value="${val}" onchange="window.ui._onVarChange('${key}', this.value)">`;
+      }
+      
+      return `<tr><td class="var-key-cell">${key}</td><td class="var-control-cell">${controlHtml}</td></tr>`;
+    }).join('');
+  }
+
+  _onVarChange(key, value, fromSlider = false) {
+    if (!this.simulator) return;
+    if (fromSlider && this.playInterval) this.stopAutoPlay();
+    this.simulator.ctxManager.update(key, value);
+    const row = document.getElementById(`row-${key}`);
+    if (row) { row.classList.remove('flash-update'); void row.offsetWidth; row.classList.add('flash-update'); }
+    this._updateSimUI(this.simulator);
+  }
+
+  _onConfigChange(key, field, value) {
+    if (this.varConfigs[key]) {
+      this.varConfigs[key][field] = parseFloat(value);
+      this._renderVariableTable(this.simulator.ctxManager.getSnapshot());
+    }
+  }
+
+  _analyzeVariables() {
+    const vars = {}; const meta = {};
+    const keywords = new Set(['true', 'false', 'null', 'undefined', 'NaN', 'Math', 'OR', 'AND']);
+
+    const scan = (str) => {
+      if (!str || str === '-') return;
+      const rangeMatch = str.match(/([a-zA-Z_]\w*)\s*(<|>|<=|>=)/g);
+      if (rangeMatch) rangeMatch.forEach(m => { const v = m.match(/([a-zA-Z_]\w*)/)[1]; if (!keywords.has(v)) meta[v] = 'number'; });
+      const boolMatch = str.match(/([a-zA-Z_]\w*)\s*(==|=)\s*(true|false)|!([a-zA-Z_]\w*)/g);
+      if (boolMatch) boolMatch.forEach(m => { const v = m.match(/([a-zA-Z_]\w*)/)?.[1] || m.match(/!([a-zA-Z_]\w*)/)?.[1]; if (v && !keywords.has(v)) meta[v] = 'boolean'; });
+      const allMatch = str.match(/\b[a-zA-Z_]\w*\b/g);
+      if (allMatch) allMatch.forEach(v => { if (!keywords.has(v) && !/^\d+$/.test(v)) if (!vars.hasOwnProperty(v)) vars[v] = 0; });
+    };
+
+    this.data.states.forEach(s => { scan(s.entry); scan(s.exit); scan(s.invariant); });
+    this.data.transitions.forEach(t => { scan(t.trigger); scan(t.guard); scan(t.action); });
+    this.varMeta = meta; return vars;
+  }
+
+  async _renderMermaid() {
+    if (!this.els.mermaidDiv) return;
+    let m = "%%{init: {'theme': 'neutral', 'themeVariables': { 'fontSize': '12px' }}}%%\n";
+    m += "stateDiagram-v2\n";
+    m += (this.layout === 'TD') ? "direction TB\n" : "direction LR\n";
+    
+    const escapeHtml = (str) => !str ? "" : str.replace(/&/g, '＆').replace(/</g, '＜').replace(/>/g, '＞').replace(/"/g, '”').replace(/'/g, "’");
+    
+    const stateTree = {};
+    this.data.states.forEach(s => {
+      const parts = s.id.split('.'); let curr = stateTree;
+      parts.forEach((p, i) => { 
+        if (!curr[p]) { 
+          const id = parts.slice(0, i+1).join('.'); 
+          const st = this.data.states.find(x => x.id === id);
+          curr[p] = { id, safeId: st ? st.safeId : id.replace(/\./g, '_'), children: {} }; 
+        } 
+        curr = curr[p].children; 
+      });
+    });
+
+    const build = (t) => {
+      let s = ""; 
+      for (const k in t) {
+        const n = t[k];
+        if (Object.keys(n.children).length > 0) s += `state "${n.id}" as ${n.safeId} {\n${build(n.children)}}\n`;
+        else s += `state "${n.id}" as ${n.safeId}\n`;
+      }
+      return s;
+    };
+    m += build(stateTree);
+
+    this.data.transitions.forEach(t => {
+      const src = t.sourceSafeId || t.source.replace(/\./g, '_');
+      const tgt = t.targetSafeId || (t.target ? t.target.replace(/\./g, '_') : src);
+      const label = `:\"<span class='edge-label-btn' data-idx='${t.lineIndex}'>${escapeHtml((t.trigger || "ε") + (t.guard ? ` [${t.guard}]` : ""))}</span>\"`;
+      m += `${src} --> ${tgt} ${label}\n`;
+    });
+
+    try {
+      const { svg } = await mermaid.render('mermaid-svg-gen', m);
+      this.els.mermaidDiv.innerHTML = svg;
+      this._applyZoom();
+      this._bindSvgEvents();
+      if (this.simulator) this._highlightActiveElements(this.simulator);
+    } catch (e) { console.error("Mermaid Error", e); }
+  }
+
+  _bindSvgEvents() {
+    this.els.mermaidDiv.querySelectorAll('.node').forEach(n => {
+      n.onclick = () => {
+        const parts = n.id.split('-');
+        const id = parts[parts.length - 2] || parts[parts.length - 1];
+        const s = this.data.states.find(x => x.safeId === id);
+        if (s) this._jumpToLine(s.lineIndex);
+      };
+    });
+    this.els.mermaidDiv.querySelectorAll('.edge-label-btn').forEach(l => {
+      l.onclick = (e) => { e.stopPropagation(); this._jumpToLine(parseInt(l.dataset.idx)); };
+    });
+  }
+
+  _highlightActiveElements(sim) {
+    if (!this.els.mermaidDiv || !sim) return;
+    this.els.mermaidDiv.querySelectorAll('.state-active').forEach(el => el.classList.remove('state-active'));
+    const state = this.data.states.find(s => s.id === sim.currentStateID);
+    const node = this.els.mermaidDiv.querySelector(`[id*="${state ? state.safeId : sim.currentStateID.replace(/\./g, '_')}"]`);
+    if (node) node.classList.add('state-active');
+  }
+
+  _jumpToLine(lineIndex) {
+    if (!this.els.editor) return;
+    const text = this.els.editor.value; const lines = text.split('\n');
+    let startPos = 0; for (let i = 0; i < lineIndex; i++) startPos += (lines[i]?.length || 0) + 1;
+    this.els.editor.focus(); this.els.editor.setSelectionRange(startPos, startPos + (lines[lineIndex]?.length || 0));
+    this.els.editor.scrollTop = (lineIndex * 21) - (this.els.editor.clientHeight / 2);
+  }
+
+  _calculateCoverage() {
+    if (!this.data.transitions.length) return 0;
+    const visited = this.data.transitions.filter(t => this.coverageSet.has(t.lineIndex)).length;
+    return Math.round((visited / this.data.transitions.length) * 100);
+  }
+
+  startAutoPlay() {
+    this.stopAutoPlay();
+    if (!this.simulator || this.simulator.simState === "Error_Lock") return;
+    this.playInterval = setInterval(() => {
+      if (this.simulator && this.simulator.simState !== "Error_Lock") this.simulator.step();
+      else this.stopAutoPlay();
+    }, this.playSpeed);
+    this.els.btnPlay?.classList.add('active');
+  }
+
+  stopAutoPlay() {
+    if (this.playInterval) { clearInterval(this.playInterval); this.playInterval = null; }
+    this.els.btnPlay?.classList.remove('active');
+  }
+
+runBatchTest() {
+    this.stopAutoPlay();
+    const report = this.testRunner.runAll(this.data.testCases, this.data.states, this.data.transitions);
+    
+    // ★修正: 4列目 (Log / Diagnostic) を追加して描画
+    this.els.testTable.innerHTML = report.results.map(r => 
+        `<tr class="result-${r.status}">
+            <td>${r.id}</td>
+            <td>${r.status}</td>
+            <td>${r.actual}</td>
+            <td style="font-size:10px; color:#64748b; font-family:monospace;">${r.reason || "-"}</td>
+        </tr>`
+    ).join('');
+
+    this.coverageSet = report.coverage.visitedLines;
+    this._renderMermaid(); 
+  }
+
+  _applyZoom() { if (this.els.mermaidDiv) this.els.mermaidDiv.style.transform = `scale(${this.zoom})`; }
+  _switchTab(targetId) {
+    this.els.panes.forEach(p => p.style.display = p.id === targetId ? 'flex' : 'none');
+    this.els.tabs.forEach(t => t.classList.toggle('active', t.dataset.target === targetId));
+  }
+  showCpp() { (new DPlusPlusExporter(this)).showCodeModal(); }
+  download() { (new DPlusPlusExporter(this)).downloadSvg(); }
+  _showAnalysis(report) {
+    if (!this.els.analysisList) return;
+    this.els.analysisPanel.style.display = report.length ? 'block' : 'none';
+    this.els.analysisList.innerHTML = report.map(i => `<div class="analysis-item ${i.type}" onclick="window.ui._jumpToLine(${i.lineIndex})">Line ${i.lineIndex+1}: ${i.message}</div>`).join('');
+  }
+  _showToast(msg) { if (this.els.toast) { this.els.toast.textContent = msg; this.els.toast.classList.add('show'); setTimeout(() => this.els.toast.classList.remove('show'), 2500); } }
+}
+
+
+
+
+
+
+    /* ========================================================================
+       BOOTSTRAP LOGIC
+       ======================================================================== */
+    window.addEventListener('DOMContentLoaded', () => {
+        try {
+            console.log("HACE Engine V51 Enhanced: System Booting...");
+
+            // UIControllerのインスタンス化 (Global access)
+            if (typeof UIController !== 'undefined') {
+                const ui = new UIController();
+                window.ui = ui;
+                ui.init();
+            } else {
+                console.warn("UIController is not defined. Please paste Step 6 logic.");
+            }
+
+            // Gutter Sync (B-02)
+            const editor = document.getElementById('editor');
+            const gutter = document.getElementById('gutter');
+            const syncGutter = () => {
+                const lines = editor.value.split('\n').length;
+                gutter.innerHTML = Array.from({length: lines}, (_, i) => i + 1).join('<br>');
+            };
+            editor.addEventListener('input', syncGutter);
+            editor.addEventListener('scroll', () => { gutter.scrollTop = editor.scrollTop; });
+            syncGutter();
+
+            console.log("HACE Engine V51 Enhanced: System Online.");
+        } catch (e) {
+            console.error("Critical Boot Error:", e);
+        }
+    });
+</script>
+</body>
+</html>
