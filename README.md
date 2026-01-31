@@ -16,6 +16,9 @@ D+++ Visualizer は、
 
 設計段階で状態遷移表で検討したロジックを**実行して確かめる**ことを目的としています。
 
+<img width="1902" height="880" alt="image" src="https://github.com/user-attachments/assets/90470c63-de72-4f82-9ca7-154620e52199" />
+
+
 ---
 
 ## 想定している使い方・ユーザー
