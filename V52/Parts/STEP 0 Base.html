@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Format D+++ Visualizer v52 (Full SSOT Base)</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script>
+// Mermaid Initialization (V52 Fix with Detailed Error)
+document.addEventListener('DOMContentLoaded', () => {
+    mermaid.initialize({ 
+        startOnLoad: false,
+        theme: 'default',
+        securityLevel: 'loose',
+        // 詳細エラー取得用のハンドラを追加
+        parseError: (err, hash) => {
+            console.error("--- Mermaid Parse Error Detail ---");
+            console.error("Error Message:", err);
+            console.error("Hash (Internal State):", hash);
+        }
+    });
+});
+    </script>
+    
+    <style>
+        /* --- Design Tokens (B-01 / V52 Base) --- */
+        :root {
+            --bg-color: #f8fafc;
+            --panel-bg: #ffffff;
+            --border-color: #e2e8f0;
+            --primary: #3b82f6;
+            --action: #ef4444;
+            --update: #6366f1;
+            --entry: #22c55e;
+            --check: #ec4899;
+            --warn: #f59e0b;
+            --text-main: #1e293b;
+            --line-height: 21px;
+            /* SSOT: Gutter Sync (B-02) */
+        }
+
+        body {
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-main);
+            overflow: hidden;
+        }
+
+        /* --- Header (Z-Index: 100) --- */
+        header {
+            height: 50px;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--panel-bg);
+            display: flex;
+            align-items: center;
+            padding: 0 1rem;
+            justify-content: space-between;
+            z-index: 100;
+        }
+
+        .toolbar { display: flex; gap: 8px; align-items: center; }
+        .tool-sep { width: 1px; height: 18px; background: var(--border-color); margin: 0 4px; }
+
+        /* --- Layout: 3-Pane Structure (B-05) --- */
+        #workspace { display: flex; flex: 1; overflow: hidden; transition: flex-direction 0.3s ease; }
+        .pane-left { 
+            width: 35%;
+            min-width: 320px;
+            display: flex;
+            border-right: 1px solid var(--border-color);
+            background: #fff;
+            position: relative;
+        }
+        .pane-right { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+        /* --- Editor (B-02) --- */
+        #gutter {
+            width: 45px;
+            background: #f1f5f9;
+            border-right: 1px solid var(--border-color);
+            text-align: right;
+            padding: 10px 5px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            line-height: var(--line-height);
+            color: #94a3b8;
+            overflow: hidden;
+            user-select: none;
+        }
+        #editor {
+            flex: 1;
+            border: none;
+            padding: 10px;
+            resize: none;
+            outline: none;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            line-height: var(--line-height);
+            white-space: pre;
+            overflow: auto;
+            color: #0f172a;
+            background: transparent;
+        }
+
+        /* --- Visualizer --- */
+        #diagram-container { 
+            flex: 1;
+            overflow: auto;
+            background: #fff;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+        #diagram { transition: transform 0.2s ease-out; transform-origin: top center; padding: 40px; }
+
+        /* --- Bottom Panel (Z-Index: 50) --- */
+        #bottom-panel { 
+            height: 320px;
+            border-top: 1px solid var(--border-color);
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            z-index: 50;
+            transition: height 0.3s ease;
+        }
+        .tabs { display: flex; border-bottom: 1px solid var(--border-color); background: #f8fafc; flex-shrink: 0; }
+        .tab-btn {
+            padding: 10px 20px;
+            font-size: 12px;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            border-right: 1px solid var(--border-color);
+            color: #64748b;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .tab-btn.active { 
+            background: #fff;
+            color: var(--primary);
+            border-bottom: 2px solid var(--primary);
+            font-weight: 700;
+        }
+        .tab-pane { flex: 1; display: none; overflow: hidden; flex-direction: column; }
+        .tab-pane.active { display: flex; }
+
+        /* --- Manual Sim Layout & Analysis --- */
+        .manual-layout { display: flex; flex: 1; overflow: hidden; }
+        .var-section { flex: 1; overflow: auto; border-right: 1px solid var(--border-color); }
+        #trigger-panel { width: 280px; background: #fcfcfd; display: flex; flex-direction: column; padding: 10px; gap: 8px; overflow-y: auto; }
+        
+        /* V51復元: 解析パネルスタイル */
+        #analysis-panel { border-top: 2px solid var(--border-color); background: #fefce8; padding: 10px; }
+        .analysis-item { font-size: 11px; margin-bottom: 4px; padding: 4px; border-radius: 4px; display: flex; gap: 8px; }
+        .analysis-item.error { background: #fee2e2; color: #b91c1c; }
+        .analysis-item.warn { background: #fef9c3; color: #a16207; }
+
+        .panel-label { font-size: 10px; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px; padding-left: 4px; }
+        .trigger-btn { 
+            width: 100%;
+            justify-content: flex-start;
+            text-align: left;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: #fff;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .trigger-btn:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        /* --- V52 拡張スタイル: カバレッジ & アニメーション --- */
+        #coverage-panel { 
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #f1f5f9;
+            padding: 4px 12px;
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            margin-right: 10px;
+        }
+        #dashboard-coverage { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 800; color: var(--primary); min-width: 35px; }
+        #coverage-progress-bg { width: 60px; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; }
+        #coverage-progress-fill { width: 0%; height: 100%; background: var(--primary); transition: width 0.5s ease-out; }
+
+        /* Mermaid Coverage Visuals */
+        .cov-visited rect, .cov-visited polygon { fill: #eff6ff !important; stroke: var(--primary) !important; stroke-width: 2.5px !important; }
+        .cov-unvisited { stroke: #fca5a5 !important; stroke-dasharray: 5, 5 !important; }
+
+        /* V51復元: 実行時ハイライト */
+        .diagram-highlight rect, .diagram-highlight polygon { filter: drop-shadow(0 0 8px var(--primary)); stroke: var(--primary) !important; stroke-width: 4px !important; }
+        .state-active rect, .state-active polygon, .state-active circle {
+          fill: #fef9c3 !important;
+          stroke: var(--warn) !important;
+          filter: drop-shadow(0 0 12px rgba(245, 158, 11, 0.5));
+        }
+        .edge-active .edgeLabel { background: #ffedd5 !important; border: 2px solid #f97316 !important; color: #c2410c !important; font-weight: bold !important; border-radius: 4px; padding: 2px 4px; }
+        .edge-hover-active rect { stroke: var(--action) !important; stroke-width: 3px !important; }
+
+        /* 変数更新フラッシュアニメーション */
+        @keyframes flash-yellow { 0% { background-color: #fef08a; } 100% { background-color: transparent; } }
+        .flash-update { animation: flash-yellow 1s ease-out; }
+
+        /* --- LED & Phase Status --- */
+        .led-panel { display: flex; gap: 12px; margin-left: auto; align-items: center; padding-right: 12px; }
+        #sim-status { font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 1px; }
+        .led-label { font-size: 10px; color: #94a3b8; display: flex; align-items: center; gap: 4px; font-weight: 600; text-transform: uppercase; }
+        .led { width: 8px; height: 8px; border-radius: 50%; background: #e2e8f0; transition: all 0.3s; }
+        .led-label.active { color: var(--text-main); }
+        
+        #phase-exiting.active .led { background: var(--action); box-shadow: 0 0 8px var(--action); }
+        #phase-acting.active .led { background: var(--action); box-shadow: 0 0 8px var(--action); }
+        #phase-updating.active .led { background: var(--update); box-shadow: 0 0 8px var(--update); }
+        #phase-entering.active .led { background: var(--entry); box-shadow: 0 0 8px var(--entry); }
+        #phase-checking.active .led { background: var(--check); box-shadow: 0 0 8px var(--check); }
+
+        /* --- Atomic Lock & Toasts --- */
+        body.sim-busy #editor { opacity: 0.5; pointer-events: none; }
+        body.sim-busy button:not(#btn-step):not(#btn-pause):not(#btn-start) { opacity: 0.5; pointer-events: none; }
+
+        #toast { 
+            position: fixed;
+            bottom: 340px;
+            right: 24px;
+            background: #1e293b;
+            color: #fff;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+            z-index: 2000;
+        }
+        #toast.show { transform: translateY(0); opacity: 1; }
+
+        /* --- V51復元: レスポンシブ詳細設計 --- */
+        @media (orientation: portrait) {
+            #workspace { flex-direction: column; }
+            .pane-left { width: 100%; height: 180px; border-right: none; border-bottom: 1px solid var(--border-color); }
+            #bottom-panel { height: 400px; }
+            .manual-layout { flex-direction: column; }
+            .var-section { border-right: none; border-bottom: 1px solid var(--border-color); max-height: 200px; }
+            #trigger-panel { width: 100%; height: 180px; }
+            header .toolbar span { display: none; }
+        }
+
+        /* --- UI Elements & Modals --- */
+        button { 
+            padding: 6px 12px;
+            border: 1px solid var(--border-color);
+            background: #fff;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        button:hover { background: #f1f5f9; border-color: #cbd5e1; }
+        button.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+        button.action { color: var(--action); border-color: #fca5a5; }
+
+        .table-container { width: 100%; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th { background: #f8fafc; position: sticky; top: 0; z-index: 10; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border-color); color: #64748b; }
+        td { padding: 8px 12px; border-bottom: 1px solid var(--border-color); }
+
+        #code-modal { 
+            position: fixed;
+            inset: 0;
+            background: rgba(15,23,42,0.6);
+            backdrop-filter: blur(4px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content { 
+            width: 80%;
+            height: 80%;
+            background: #fff;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+            overflow: hidden;
+        }
+        #cpp-output { 
+            flex: 1;
+            margin: 0;
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            overflow: auto;
+            outline: none;
+            border: none;
+            resize: none;
+        }
+        /* Coverage Styles (DOM Injection用) */
+        .cov-visited {
+            fill: #eff6ff !important;
+            stroke: #3b82f6 !important;
+            stroke-width: 2.5px !important;
+        }
+
+        /* 実行中の発光エフェクト */
+        .state-active rect, .state-active path, .state-active circle {
+            fill: #fef9c3 !important;
+            stroke: #eab308 !important;
+            filter: drop-shadow(0 0 8px rgba(234, 179, 8, 0.6));
+        }
+        /* エッジハイライト時のアニメーション設定 */
+        .edgePath path {
+           transition: stroke 0.2s, stroke-width 0.2s, filter 0.2s; /* 滑らかに光らせる */
+        }
+
+         /* JSで付与される diagram-highlight クラスへの対応 */
+        .diagram-highlight {
+          stroke: var(--action) !important;
+          stroke-width: 3.5px !important;
+          filter: drop-shadow(0 0 5px rgba(239, 68, 68, 0.4));
+        }
+
+        /* エッジラベル（文字部分）の強調 */
+        .edge-hover-active .edgeLabel {
+          background-color: #fee2e2 !important; /* 薄い赤 */
+          border: 1px solid var(--action) !important;
+          color: var(--action) !important;
+          font-weight: bold;
+          transform: scale(1.1);
+          transition: all 0.2s;
+        }
+        /* ラベルボタンのホバー反応を改善 */
+        .edge-label-btn {
+           cursor: pointer;
+           transition: background 0.2s;
+           pointer-events: auto; /* Mermaidのオーバーレイによる無効化を防止 */
+        }
+        /* 検証 3: ボタンを縦並びから「並べて表示」に変更 */
+        .trigger-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+/* --- V51復元: DOM操作専用ハイライト定義 (追加分) --- */
+
+/* 1. 矢印（path）自体の発光 */
+path.diagram-highlight {
+    stroke: var(--action) !important;
+    stroke-width: 4px !important;
+    filter: drop-shadow(0 0 5px rgba(239, 68, 68, 0.6));
+    transition: stroke 0.2s, stroke-width 0.2s;
+}
+
+/* 2. 遷移ラベル（文字）の外枠発光 */
+.edgeLabel.edge-hover-active {
+    filter: drop-shadow(0 0 3px rgba(239, 68, 68, 0.4));
+}
+
+/* 3. 遷移ラベル内のボタン（テキスト）の強調 */
+.edgeLabel.edge-hover-active .edge-label-btn {
+    color: var(--action) !important;
+    background: #fee2e2 !important; /* 薄い赤 */
+    font-weight: bold !important;
+    transform: scale(1.1);
+    display: inline-block;
+    transition: all 0.2s;
+}
+
+/* 4. 現在地の箱（Node）の強力な発光（V51準拠の黄色） */
+.state-active rect, 
+.state-active polygon, 
+.state-active circle {
+    fill: #fef9c3 !important;
+    stroke: var(--warn) !important;
+    stroke-width: 4px !important;
+    filter: drop-shadow(0 0 10px rgba(245, 158, 11, 0.6));
+    transition: all 0.3s;
+}
+
+    </style>
+</head>
+<body class="UI.Idle">
+
+<header>
+    <div class="toolbar">
+        <h1 style="margin:0; font-size:1.1rem; color:var(--primary); font-weight:800; letter-spacing:-0.5px">D+++ <span>Visualizer v52</span></h1>
+        <div class="tool-sep"></div>
+        <button id="btn-layout-td" title="Top-Down"><i class="ph ph-layout"></i> TD</button>
+        <button id="btn-layout-lr" title="Left-Right"><i class="ph ph-layout ph-rotate-90"></i> LR</button>
+        <div class="tool-sep"></div>
+        <button id="btn-zoom-out"><i class="ph ph-magnifying-glass-minus"></i></button>
+        <button id="btn-zoom-reset">100%</button>
+        <button id="btn-zoom-in"><i class="ph ph-magnifying-glass-plus"></i></button>
+        <div class="tool-sep"></div>
+        <button id="btn-ai-export" title="AI連携用JSON出力"><i class="ph ph-robot"></i> AI Export</button>
+    </div>
+
+    <div class="led-panel">
+        <div id="coverage-panel">
+            <span id="dashboard-coverage">0%</span>
+            <div id="coverage-progress-bg">
+                <div id="coverage-progress-fill"></div>
+            </div>
+        </div>
+
+        <div id="sim-status" style="margin-right:15px; font-weight:800; color:var(--primary);">OFFLINE</div>
+        
+        <div class="led-label" id="phase-exiting"><span class="led"></span>Exit</div>
+        <div class="led-label" id="phase-acting"><span class="led"></span>Act</div>
+        <div class="led-label" id="phase-updating"><span class="led"></span>Update</div>
+        <div class="led-label" id="phase-entering"><span class="led"></span>Enter</div>
+        <div class="led-label" id="phase-checking"><span class="led"></span>Check</div>
+  
+        <div class="tool-sep"></div>
+        <button id="btn-download" title="Export SVG"><i class="ph ph-image"></i></button>
+        <button id="btn-gen-cpp" class="primary"><i class="ph ph-code"></i> <span>Export C++</span></button>
+    </div>
+</header>
+
+<div id="workspace">
+    <div class="pane-left">
+        <div id="gutter"></div>
+        <textarea id="editor" spellcheck="false">// Format D+++ v52 (HACE Cycle Model)
+// ==========================================
+
+Table A: States
+| ID       | Entry      | Exit       | Invariant |
+|:---------|:-----------|:-----------|:----------|
+| Off      | led=0      | -          | count==0  |
+| On       | led=1      | -          | count>0   |
+| On.Wait  | mode="W"   | -          | -         |
+
+Table B: Transitions
+| Priority | Source  | Trigger | Guard    | Action   | Target  |
+|:---------|:--------|:--------|:---------|:---------|:--------|
+| Default  | Off     | toggle  | -        | count++  | On      |
+| Default  | On      | toggle  | -        | count=0  | Off     |
+
+Table C: Test Cases
+| ID   | Initial | Scenario | Context | Expected |
+|:-----|:--------|:---------|:--------|:---------|
+| T01  | Off     | [toggle] | count=0 | On       |</textarea>
+    </div>
+    <div class="pane-right">
+        <div id="diagram-container">
+            <div id="diagram"></div>
+        </div>
+
+        <div id="bottom-panel">
+            <div class="tabs">
+                <button class="tab-btn active" data-target="view-manual"><i class="ph ph-cpu"></i> Manual Sim (HACE)</button>
+                <button class="tab-btn" data-target="view-test"><i class="ph ph-test-tube"></i> Batch Runner</button>
+            </div>
+
+            <div id="view-manual" class="tab-pane active">
+                <div class="toolbar" style="padding: 10px; border-bottom: 1px solid var(--border-color)">
+                    <button id="btn-start" class="primary">Reset & Start</button>
+                    <button id="btn-step">Step Run</button>
+                    
+                    <div class="tool-sep"></div>
+                    <button id="btn-play" title="Auto Play"><i class="ph ph-play-circle"></i> Play</button>
+                    <button id="btn-pause" title="Pause"><i class="ph ph-pause-circle"></i> Pause</button>
+                    <div style="display:flex; align-items:center; gap:8px; margin-left:8px;">
+                        <span style="font-size:10px; color:#94a3b8; font-weight:700;">SPEED</span>
+                        <input type="range" id="speed-range" min="100" max="2000" step="100" value="500" style="width:80px">
+                    </div>
+
+                    <div class="tool-sep"></div>
+                    <button id="btn-sim-undo">Undo</button>
+                    <input id="initial-context" type="text" placeholder="Init Context (e.g. x=1)" spellcheck="false" style="width:200px; padding:4px 8px; border:1px solid var(--border-color); border-radius:4px; font-size:11px">
+                    <button id="btn-sim-rec" class="action">● Record</button>
+                </div>
+                
+                <div class="manual-layout">
+                    <div class="var-section">
+                        <div class="table-container">
+                            <table>
+                                <thead><tr><th style="width:140px">Variable</th><th>Value / Control</th></tr></thead>
+                                <tbody id="var-body"></tbody>
+                            </table>
+                        </div>
+                        <div id="analysis-panel" style="display:none">
+                            <div class="panel-label">Analysis Diagnostics</div>
+                            <div id="analysis-list"></div>
+                        </div>
+                    </div>
+ 
+                    <div id="trigger-panel">
+                        <div class="panel-label">Available Triggers</div>
+                        <div id="trigger-list-empty" style="font-size:11px; color:#94a3b8; text-align:center; padding-top:20px;">
+                            Start simulation to see triggers.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-test" class="tab-pane">
+                <div class="toolbar" style="padding: 10px; border-bottom: 1px solid var(--border-color)">
+                    <button id="btn-run-test" class="primary">Execute All Cases</button>
+                    <div id="test-summary" style="font-size:12px; font-weight:600; margin-left:10px"></div>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead><tr><th style="width:80px">ID</th><th style="width:80px">Status</th><th>Actual State</th><th>Log / Diagnostic</th></tr></thead>
+                        <tbody id="test-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="code-modal">
+    <div class="modal-content">
+        <div class="toolbar" style="padding:10px; border-bottom:1px solid var(--border-color)">
+            <span style="font-weight:700; font-size:13px; margin-left:8px">Analysis Export (C++ / JSON)</span>
+            <button id="btn-copy-code" style="margin-left:auto">Copy Code</button>
+            <button id="btn-close-modal">Close</button>
+        </div>
+        <textarea id="cpp-output" readonly></textarea>
+    </div>
+</div>
+
+<div id="toast">Message</div>
+
+<script>
+    /* ========================================================================
+       PASTE MODULES HERE (Step 1 to Step 8)
+       V52 Logic Binder: UIController must reference the restored #analysis-panel.
+       ======================================================================== */
+
+    // --- PASTE STEP 1: SafeEvaluator ---
+
+    // --- PASTE STEP 2: DPlusPlusParser ---
+
+    // --- PASTE STEP 3: ContextManager ---
+
+    // --- PASTE STEP 4: AtomicSimulator ---
+
+    // --- PASTE STEP 5: TestRunner ---
+
+    // --- PASTE STEP 7: DPlusPlusAnalyzer ---
+
+    // --- PASTE STEP 8: DPlusPlusExporter ---
+
+    // --- PASTE STEP 6: UIController ---
+    // --- PASTE STEP 6.1: UIRenderer ---
+
+    // --- PASTE STEP 6.2: SimController ---
+
+    // --- PASTE STEP 6.3: UIController ---
+
+    window.addEventListener('DOMContentLoaded', () => {
+        try {
+            console.log("HACE Engine V52 Full: System Booting...");
+            
+            if (typeof UIController !== 'undefined') {
+                const ui = new UIController();
+                window.ui = ui;
+                ui.init();
+            }
+
+            // Gutter Sync (B-02)
+            const editor = document.getElementById('editor');
+            const gutter = document.getElementById('gutter');
+            const syncGutter = () => {
+                const lines = editor.value.split('\n').length;
+                gutter.innerHTML = Array.from({length: lines}, (_, i) => i + 1).join('<br>');
+            };
+            editor.addEventListener('input', syncGutter);
+            editor.addEventListener('scroll', () => { gutter.scrollTop = editor.scrollTop; });
+            syncGutter();
+
+            console.log("HACE Engine V52 Full: System Online (SSOT Compliant).");
+        } catch (e) {
+            console.error("Critical Boot Error:", e);
+        }
+    });
+</script>
+</body>
+</html>
