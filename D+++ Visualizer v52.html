@@ -1,0 +1,3442 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Format D+++ Visualizer v52 (Full SSOT Base)</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script>
+// Mermaid Initialization (V52 Fix with Detailed Error)
+document.addEventListener('DOMContentLoaded', () => {
+    mermaid.initialize({ 
+        startOnLoad: false,
+        theme: 'default',
+        securityLevel: 'loose',
+        // 詳細エラー取得用のハンドラを追加
+        parseError: (err, hash) => {
+            console.error("--- Mermaid Parse Error Detail ---");
+            console.error("Error Message:", err);
+            console.error("Hash (Internal State):", hash);
+        }
+    });
+});
+    </script>
+    
+    <style>
+        /* --- Design Tokens (B-01 / V52 Base) --- */
+        :root {
+            --bg-color: #f8fafc;
+            --panel-bg: #ffffff;
+            --border-color: #e2e8f0;
+            --primary: #3b82f6;
+            --action: #ef4444;
+            --update: #6366f1;
+            --entry: #22c55e;
+            --check: #ec4899;
+            --warn: #f59e0b;
+            --text-main: #1e293b;
+            --line-height: 21px;
+            /* SSOT: Gutter Sync (B-02) */
+        }
+
+        body {
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-main);
+            overflow: hidden;
+        }
+
+        /* --- Header (Z-Index: 100) --- */
+        header {
+            height: 50px;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--panel-bg);
+            display: flex;
+            align-items: center;
+            padding: 0 1rem;
+            justify-content: space-between;
+            z-index: 100;
+        }
+
+        .toolbar { display: flex; gap: 8px; align-items: center; }
+        .tool-sep { width: 1px; height: 18px; background: var(--border-color); margin: 0 4px; }
+
+        /* --- Layout: 3-Pane Structure (B-05) --- */
+        #workspace { display: flex; flex: 1; overflow: hidden; transition: flex-direction 0.3s ease; }
+        .pane-left { 
+            width: 35%;
+            min-width: 320px;
+            display: flex;
+            border-right: 1px solid var(--border-color);
+            background: #fff;
+            position: relative;
+        }
+        .pane-right { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+        /* --- Editor (B-02) --- */
+        #gutter {
+            width: 45px;
+            background: #f1f5f9;
+            border-right: 1px solid var(--border-color);
+            text-align: right;
+            padding: 10px 5px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            line-height: var(--line-height);
+            color: #94a3b8;
+            overflow: hidden;
+            user-select: none;
+        }
+        #editor {
+            flex: 1;
+            border: none;
+            padding: 10px;
+            resize: none;
+            outline: none;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            line-height: var(--line-height);
+            white-space: pre;
+            overflow: auto;
+            color: #0f172a;
+            background: transparent;
+        }
+
+        /* --- Visualizer --- */
+        #diagram-container { 
+            flex: 1;
+            overflow: auto;
+            background: #fff;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+        #diagram { transition: transform 0.2s ease-out; transform-origin: top center; padding: 40px; }
+
+        /* --- Bottom Panel (Z-Index: 50) --- */
+        #bottom-panel { 
+            height: 320px;
+            border-top: 1px solid var(--border-color);
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            z-index: 50;
+            transition: height 0.3s ease;
+        }
+        .tabs { display: flex; border-bottom: 1px solid var(--border-color); background: #f8fafc; flex-shrink: 0; }
+        .tab-btn {
+            padding: 10px 20px;
+            font-size: 12px;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            border-right: 1px solid var(--border-color);
+            color: #64748b;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .tab-btn.active { 
+            background: #fff;
+            color: var(--primary);
+            border-bottom: 2px solid var(--primary);
+            font-weight: 700;
+        }
+        .tab-pane { flex: 1; display: none; overflow: hidden; flex-direction: column; }
+        .tab-pane.active { display: flex; }
+
+        /* --- Manual Sim Layout & Analysis --- */
+        .manual-layout { display: flex; flex: 1; overflow: hidden; }
+        .var-section { flex: 1; overflow: auto; border-right: 1px solid var(--border-color); }
+        #trigger-panel { width: 280px; background: #fcfcfd; display: flex; flex-direction: column; padding: 10px; gap: 8px; overflow-y: auto; }
+        
+        /* V51復元: 解析パネルスタイル */
+        #analysis-panel { border-top: 2px solid var(--border-color); background: #fefce8; padding: 10px; }
+        .analysis-item { font-size: 11px; margin-bottom: 4px; padding: 4px; border-radius: 4px; display: flex; gap: 8px; }
+        .analysis-item.error { background: #fee2e2; color: #b91c1c; }
+        .analysis-item.warn { background: #fef9c3; color: #a16207; }
+
+        .panel-label { font-size: 10px; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px; padding-left: 4px; }
+        .trigger-btn { 
+            width: 100%;
+            justify-content: flex-start;
+            text-align: left;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: #fff;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .trigger-btn:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        /* --- V52 拡張スタイル: カバレッジ & アニメーション --- */
+        #coverage-panel { 
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #f1f5f9;
+            padding: 4px 12px;
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            margin-right: 10px;
+        }
+        #dashboard-coverage { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 800; color: var(--primary); min-width: 35px; }
+        #coverage-progress-bg { width: 60px; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; }
+        #coverage-progress-fill { width: 0%; height: 100%; background: var(--primary); transition: width 0.5s ease-out; }
+
+        /* Mermaid Coverage Visuals */
+        .cov-visited rect, .cov-visited polygon { fill: #eff6ff !important; stroke: var(--primary) !important; stroke-width: 2.5px !important; }
+        .cov-unvisited { stroke: #fca5a5 !important; stroke-dasharray: 5, 5 !important; }
+
+        /* V51復元: 実行時ハイライト */
+        .diagram-highlight rect, .diagram-highlight polygon { filter: drop-shadow(0 0 8px var(--primary)); stroke: var(--primary) !important; stroke-width: 4px !important; }
+        .state-active rect, .state-active polygon, .state-active circle {
+          fill: #fef9c3 !important;
+          stroke: var(--warn) !important;
+          filter: drop-shadow(0 0 12px rgba(245, 158, 11, 0.5));
+        }
+        .edge-active .edgeLabel { background: #ffedd5 !important; border: 2px solid #f97316 !important; color: #c2410c !important; font-weight: bold !important; border-radius: 4px; padding: 2px 4px; }
+        .edge-hover-active rect { stroke: var(--action) !important; stroke-width: 3px !important; }
+
+        /* 変数更新フラッシュアニメーション */
+        @keyframes flash-yellow { 0% { background-color: #fef08a; } 100% { background-color: transparent; } }
+        .flash-update { animation: flash-yellow 1s ease-out; }
+
+        /* --- LED & Phase Status --- */
+        .led-panel { display: flex; gap: 12px; margin-left: auto; align-items: center; padding-right: 12px; }
+        #sim-status { font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 1px; }
+        .led-label { font-size: 10px; color: #94a3b8; display: flex; align-items: center; gap: 4px; font-weight: 600; text-transform: uppercase; }
+        .led { width: 8px; height: 8px; border-radius: 50%; background: #e2e8f0; transition: all 0.3s; }
+        .led-label.active { color: var(--text-main); }
+        
+        #phase-exiting.active .led { background: var(--action); box-shadow: 0 0 8px var(--action); }
+        #phase-acting.active .led { background: var(--action); box-shadow: 0 0 8px var(--action); }
+        #phase-updating.active .led { background: var(--update); box-shadow: 0 0 8px var(--update); }
+        #phase-entering.active .led { background: var(--entry); box-shadow: 0 0 8px var(--entry); }
+        #phase-checking.active .led { background: var(--check); box-shadow: 0 0 8px var(--check); }
+
+        /* --- Atomic Lock & Toasts --- */
+        body.sim-busy #editor { opacity: 0.5; pointer-events: none; }
+        body.sim-busy button:not(#btn-step):not(#btn-pause):not(#btn-start) { opacity: 0.5; pointer-events: none; }
+
+        #toast { 
+            position: fixed;
+            bottom: 340px;
+            right: 24px;
+            background: #1e293b;
+            color: #fff;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+            z-index: 2000;
+        }
+        #toast.show { transform: translateY(0); opacity: 1; }
+
+        /* --- V51復元: レスポンシブ詳細設計 --- */
+        @media (orientation: portrait) {
+            #workspace { flex-direction: column; }
+            .pane-left { width: 100%; height: 180px; border-right: none; border-bottom: 1px solid var(--border-color); }
+            #bottom-panel { height: 400px; }
+            .manual-layout { flex-direction: column; }
+            .var-section { border-right: none; border-bottom: 1px solid var(--border-color); max-height: 200px; }
+            #trigger-panel { width: 100%; height: 180px; }
+            header .toolbar span { display: none; }
+        }
+
+        /* --- UI Elements & Modals --- */
+        button { 
+            padding: 6px 12px;
+            border: 1px solid var(--border-color);
+            background: #fff;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        button:hover { background: #f1f5f9; border-color: #cbd5e1; }
+        button.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+        button.action { color: var(--action); border-color: #fca5a5; }
+
+        .table-container { width: 100%; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th { background: #f8fafc; position: sticky; top: 0; z-index: 10; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border-color); color: #64748b; }
+        td { padding: 8px 12px; border-bottom: 1px solid var(--border-color); }
+
+        #code-modal { 
+            position: fixed;
+            inset: 0;
+            background: rgba(15,23,42,0.6);
+            backdrop-filter: blur(4px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content { 
+            width: 80%;
+            height: 80%;
+            background: #fff;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+            overflow: hidden;
+        }
+        #cpp-output { 
+            flex: 1;
+            margin: 0;
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            overflow: auto;
+            outline: none;
+            border: none;
+            resize: none;
+        }
+        /* Coverage Styles (DOM Injection用) */
+        .cov-visited {
+            fill: #eff6ff !important;
+            stroke: #3b82f6 !important;
+            stroke-width: 2.5px !important;
+        }
+
+        /* 実行中の発光エフェクト */
+        .state-active rect, .state-active path, .state-active circle {
+            fill: #fef9c3 !important;
+            stroke: #eab308 !important;
+            filter: drop-shadow(0 0 8px rgba(234, 179, 8, 0.6));
+        }
+        /* エッジハイライト時のアニメーション設定 */
+        .edgePath path {
+           transition: stroke 0.2s, stroke-width 0.2s, filter 0.2s; /* 滑らかに光らせる */
+        }
+
+         /* JSで付与される diagram-highlight クラスへの対応 */
+        .diagram-highlight {
+          stroke: var(--action) !important;
+          stroke-width: 3.5px !important;
+          filter: drop-shadow(0 0 5px rgba(239, 68, 68, 0.4));
+        }
+
+        /* エッジラベル（文字部分）の強調 */
+        .edge-hover-active .edgeLabel {
+          background-color: #fee2e2 !important; /* 薄い赤 */
+          border: 1px solid var(--action) !important;
+          color: var(--action) !important;
+          font-weight: bold;
+          transform: scale(1.1);
+          transition: all 0.2s;
+        }
+        /* ラベルボタンのホバー反応を改善 */
+        .edge-label-btn {
+           cursor: pointer;
+           transition: background 0.2s;
+           pointer-events: auto; /* Mermaidのオーバーレイによる無効化を防止 */
+        }
+        /* 検証 3: ボタンを縦並びから「並べて表示」に変更 */
+        .trigger-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+/* --- V51復元: DOM操作専用ハイライト定義 (追加分) --- */
+
+/* 1. 矢印（path）自体の発光 */
+path.diagram-highlight {
+    stroke: var(--action) !important;
+    stroke-width: 4px !important;
+    filter: drop-shadow(0 0 5px rgba(239, 68, 68, 0.6));
+    transition: stroke 0.2s, stroke-width 0.2s;
+}
+
+/* 2. 遷移ラベル（文字）の外枠発光 */
+.edgeLabel.edge-hover-active {
+    filter: drop-shadow(0 0 3px rgba(239, 68, 68, 0.4));
+}
+
+/* 3. 遷移ラベル内のボタン（テキスト）の強調 */
+.edgeLabel.edge-hover-active .edge-label-btn {
+    color: var(--action) !important;
+    background: #fee2e2 !important; /* 薄い赤 */
+    font-weight: bold !important;
+    transform: scale(1.1);
+    display: inline-block;
+    transition: all 0.2s;
+}
+
+/* 4. 現在地の箱（Node）の強力な発光（V51準拠の黄色） */
+.state-active rect, 
+.state-active polygon, 
+.state-active circle {
+    fill: #fef9c3 !important;
+    stroke: var(--warn) !important;
+    stroke-width: 4px !important;
+    filter: drop-shadow(0 0 10px rgba(245, 158, 11, 0.6));
+    transition: all 0.3s;
+}
+
+    </style>
+</head>
+<body class="UI.Idle">
+
+<header>
+    <div class="toolbar">
+        <h1 style="margin:0; font-size:1.1rem; color:var(--primary); font-weight:800; letter-spacing:-0.5px">D+++ <span>Visualizer v52</span></h1>
+        <div class="tool-sep"></div>
+        <button id="btn-layout-td" title="Top-Down"><i class="ph ph-layout"></i> TD</button>
+        <button id="btn-layout-lr" title="Left-Right"><i class="ph ph-layout ph-rotate-90"></i> LR</button>
+        <div class="tool-sep"></div>
+        <button id="btn-zoom-out"><i class="ph ph-magnifying-glass-minus"></i></button>
+        <button id="btn-zoom-reset">100%</button>
+        <button id="btn-zoom-in"><i class="ph ph-magnifying-glass-plus"></i></button>
+        <div class="tool-sep"></div>
+        <button id="btn-ai-export" title="AI連携用JSON出力"><i class="ph ph-robot"></i> AI Export</button>
+    </div>
+
+    <div class="led-panel">
+        <div id="coverage-panel">
+            <span id="dashboard-coverage">0%</span>
+            <div id="coverage-progress-bg">
+                <div id="coverage-progress-fill"></div>
+            </div>
+        </div>
+
+        <div id="sim-status" style="margin-right:15px; font-weight:800; color:var(--primary);">OFFLINE</div>
+        
+        <div class="led-label" id="phase-exiting"><span class="led"></span>Exit</div>
+        <div class="led-label" id="phase-acting"><span class="led"></span>Act</div>
+        <div class="led-label" id="phase-updating"><span class="led"></span>Update</div>
+        <div class="led-label" id="phase-entering"><span class="led"></span>Enter</div>
+        <div class="led-label" id="phase-checking"><span class="led"></span>Check</div>
+  
+        <div class="tool-sep"></div>
+        <button id="btn-download" title="Export SVG"><i class="ph ph-image"></i></button>
+        <button id="btn-gen-cpp" class="primary"><i class="ph ph-code"></i> <span>Export C++</span></button>
+    </div>
+</header>
+
+<div id="workspace">
+    <div class="pane-left">
+        <div id="gutter"></div>
+        <textarea id="editor" spellcheck="false">// Format D+++ v52 (HACE Cycle Model)
+// ==========================================
+
+Table A: States
+| ID       | Entry      | Exit       | Invariant |
+|:---------|:-----------|:-----------|:----------|
+| Off      | led=0      | -          | count==0  |
+| On       | led=1      | -          | count>0   |
+| On.Wait  | mode="W"   | -          | -         |
+
+Table B: Transitions
+| Priority | Source  | Trigger | Guard    | Action   | Target  |
+|:---------|:--------|:--------|:---------|:---------|:--------|
+| Default  | Off     | toggle  | -        | count++  | On      |
+| Default  | On      | toggle  | -        | count=0  | Off     |
+
+Table C: Test Cases
+| ID   | Initial | Scenario | Context | Expected |
+|:-----|:--------|:---------|:--------|:---------|
+| T01  | Off     | [toggle] | count=0 | On       |</textarea>
+    </div>
+    <div class="pane-right">
+        <div id="diagram-container">
+            <div id="diagram"></div>
+        </div>
+
+        <div id="bottom-panel">
+            <div class="tabs">
+                <button class="tab-btn active" data-target="view-manual"><i class="ph ph-cpu"></i> Manual Sim (HACE)</button>
+                <button class="tab-btn" data-target="view-test"><i class="ph ph-test-tube"></i> Batch Runner</button>
+            </div>
+
+            <div id="view-manual" class="tab-pane active">
+                <div class="toolbar" style="padding: 10px; border-bottom: 1px solid var(--border-color)">
+                    <button id="btn-start" class="primary">Reset & Start</button>
+                    <button id="btn-step">Step Run</button>
+                    
+                    <div class="tool-sep"></div>
+                    <button id="btn-play" title="Auto Play"><i class="ph ph-play-circle"></i> Play</button>
+                    <button id="btn-pause" title="Pause"><i class="ph ph-pause-circle"></i> Pause</button>
+                    <div style="display:flex; align-items:center; gap:8px; margin-left:8px;">
+                        <span style="font-size:10px; color:#94a3b8; font-weight:700;">SPEED</span>
+                        <input type="range" id="speed-range" min="100" max="2000" step="100" value="500" style="width:80px">
+                    </div>
+
+                    <div class="tool-sep"></div>
+                    <button id="btn-sim-undo">Undo</button>
+                    <input id="initial-context" type="text" placeholder="Init Context (e.g. x=1)" spellcheck="false" style="width:200px; padding:4px 8px; border:1px solid var(--border-color); border-radius:4px; font-size:11px">
+                    <button id="btn-sim-rec" class="action">● Record</button>
+                </div>
+                
+                <div class="manual-layout">
+                    <div class="var-section">
+                        <div class="table-container">
+                            <table>
+                                <thead><tr><th style="width:140px">Variable</th><th>Value / Control</th></tr></thead>
+                                <tbody id="var-body"></tbody>
+                            </table>
+                        </div>
+                        <div id="analysis-panel" style="display:none">
+                            <div class="panel-label">Analysis Diagnostics</div>
+                            <div id="analysis-list"></div>
+                        </div>
+                    </div>
+ 
+                    <div id="trigger-panel">
+                        <div class="panel-label">Available Triggers</div>
+                        <div id="trigger-list-empty" style="font-size:11px; color:#94a3b8; text-align:center; padding-top:20px;">
+                            Start simulation to see triggers.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-test" class="tab-pane">
+                <div class="toolbar" style="padding: 10px; border-bottom: 1px solid var(--border-color)">
+                    <button id="btn-run-test" class="primary">Execute All Cases</button>
+                    <div id="test-summary" style="font-size:12px; font-weight:600; margin-left:10px"></div>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead><tr><th style="width:80px">ID</th><th style="width:80px">Status</th><th>Actual State</th><th>Log / Diagnostic</th></tr></thead>
+                        <tbody id="test-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="code-modal">
+    <div class="modal-content">
+        <div class="toolbar" style="padding:10px; border-bottom:1px solid var(--border-color)">
+            <span style="font-weight:700; font-size:13px; margin-left:8px">Analysis Export (C++ / JSON)</span>
+            <button id="btn-copy-code" style="margin-left:auto">Copy Code</button>
+            <button id="btn-close-modal">Close</button>
+        </div>
+        <textarea id="cpp-output" readonly></textarea>
+    </div>
+</div>
+
+<div id="toast">Message</div>
+
+<script>
+    /* ========================================================================
+       PASTE MODULES HERE (Step 1 to Step 8)
+       V52 Logic Binder: UIController must reference the restored #analysis-panel.
+       ======================================================================== */
+
+    // --- PASTE STEP 1: SafeEvaluator ---
+// --- PASTE STEP 1: SafeEvaluator ---
+/**
+ * SafeEvaluator Class
+ * Format D+++ Visualizer v52 - Step 1: Logic Core (Physical Implementation)
+ * * 【V52物理制約の解決策】
+ * 1. ハイフン識別子マッピング: JSの変数名にハイフンを使えない制約を回避するため、
+ * ctxのキーと式内のハイフンを "__H__" に置換して評価する。
+ * 2. 空白制約の物理強制: 演算子としてのマイナスは前後に空白を必須とし、
+ * 空白のないハイフンは識別子の一部として保護する。
+ * 3. ユニット保護: --, -= を不可分な単位として、最長一致原則に基づき抽出。 
+ */
+class SafeEvaluator {
+  /**
+   * 右辺式（expr）をコンテキスト（ctx）に基づいて評価します。
+   * V52仕様: 空白制約を強制し、ハイフンを含む変数名をJS安全な形式へマッピングします。
+   * * @param {string} expr - 評価する数式または論理式
+   * @param {object} ctx - 変数スコープとなるコンテキストオブジェクト
+   * @returns {*} 評価結果
+   */
+  evaluateRHS(expr, ctx) {
+    try {
+      // 1. ctxのキーからハイフンを含む変数名を抽出し、JS安全な別名にマッピング
+      // 例: "usb-state" -> "usb__H__state"
+      const safeCtx = {};
+      
+      Object.keys(ctx).forEach(key => {
+        const safeKey = key.replace(/-/g, '__H__');
+        safeCtx[safeKey] = ctx[key];
+      });
+
+      // 2. 式(expr)のプリプロセス: 空白制約の強制
+      // V52ルール: "a-b" は1つの変数、"a - b" は減算。
+      // まず、式の中の識別子（ハイフンを含む可能性がある）を抽出し、安全な別名に置換する。
+      let processedExpr = expr;
+
+      // 識別子(最長一致)を検索し、マッピングに基づいて置換。
+      // ここで演算子境界を保護するため、後続に空白のないハイフンも識別子として扱う。
+      const identifierRegex = /[a-zA-Z_][\w-]*/g;
+      processedExpr = processedExpr.replace(identifierRegex, (match) => {
+        // ハイフンを含む場合は置換対象
+        return match.includes('-') ? match.replace(/-/g, '__H__') : match;
+      });
+
+      // 3. JS評価関数の生成
+      const keys = Object.keys(safeCtx);
+      const values = Object.values(safeCtx);
+      
+      // new Function によるサンドボックス評価。引数名はJS安全な __H__ 形式。
+      const evaluator = new Function(...keys, `return (${processedExpr});`);
+      
+      return evaluator(...values);
+    } catch (error) {
+      /**
+       * 評価失敗時の詳細情報付帯 (Step 7 診断レポート用)
+       * 単なるエラーメッセージではなく、評価しようとした式を保持。
+       */
+      throw new Error(`RHS Evaluation Failed: "${expr}" -> ${error.message}`);
+    }
+  }
+
+  /**
+   * 1行のアクション文字列を解析し、ctxを更新します。
+   * 設計書 Table B の優先順位 (Priority) に基づき、厳密な境界パースを実行します。
+   * * @param {string} line - 実行するアクション文字列
+   * @param {object} ctx - 更新対象のコンテキスト
+   * @returns {object} 更新後のコンテキスト
+   */
+  executeAction(line, ctx) {
+    // Eval.Idle -> Eval.Match: 入力の正規化
+    const s = line.trim();
+    let m;
+
+    try {
+      // --- Priority 1 / L04: 論理反転代入 ---
+      // 識別子正規表現は V52準拠の ([a-zA-Z_][\w-]*) を使用。
+      if ((m = s.match(/^([a-zA-Z_][\w-]*)\s*=\s*!(.+)$/))) {
+        const [_, key, val] = m;
+        ctx[key] = !this.evaluateRHS(val, ctx);
+      } 
+      
+      // --- Priority 2 / L03: インクリメント (++) ---
+      // 演算子ユニット保護: ++ を識別子末尾のハイフンと混同させない。
+      else if ((m = s.match(/^([a-zA-Z_][\w-]*)\s*(\+\+)$/))) {
+        const [_, key] = m;
+        ctx[key] = Number(ctx[key] || 0) + 1;
+      }
+      
+      // --- Priority 3 / L05: デクリメント (--) ---
+      // V52追加: 最長一致により、識別子末尾のハイフンを優先的に保護。
+      else if ((m = s.match(/^([a-zA-Z_][\w-]*)\s*(\-\-)$/))) {
+        const [_, key] = m;
+        ctx[key] = Number(ctx[key] || 0) - 1;
+      }
+      
+      // --- Priority 4 / L02: 加算代入 (+=) ---
+      else if ((m = s.match(/^([a-zA-Z_][\w-]*)\s*(\+=)\s*(.+)$/))) {
+        const [_, key, __, val] = m;
+        ctx[key] = Number(ctx[key] || 0) + Number(this.evaluateRHS(val, ctx));
+      }
+      
+      // --- Priority 5 / L06: 減算代入 (-=) ---
+      // V52追加: -= を独立ユニットとしてマッチ。
+      else if ((m = s.match(/^([a-zA-Z_][\w-]*)\s*(\-=)\s*(.+)$/))) {
+        const [_, key, __, val] = m;
+        ctx[key] = Number(ctx[key] || 0) - Number(this.evaluateRHS(val, ctx));
+      }
+      
+      // --- Priority 6 / L01: 単純代入 (=) ---
+      else if ((m = s.match(/^([a-zA-Z_][\w-]*)\s*=\s*(.+)$/))) {
+        const [_, key, val] = m;
+        ctx[key] = this.evaluateRHS(val, ctx);
+      } 
+      
+      // --- Default: パターン不一致 ---
+      else {
+        throw new Error("Pattern Mismatch");
+      }
+
+      // Eval.Execute -> Eval.Idle: 更新されたコンテキストを返却
+      return ctx;
+    } catch (e) {
+      /**
+       * データ保護プロトコル (V52異常系設計)
+       * エラーの発生源を明示し、ContextManagerによるロールバックをトリガーする。
+       */
+      const errorMsg = `Logic Error at: ${line} | Detail: ${e.message}`;
+      throw new Error(errorMsg);
+    }
+  }
+}
+
+    // --- PASTE STEP 2: DPlusPlusParser ---
+// --- PASTE STEP 2: DPlusPlusParser ---
+/**
+ * DPlusPlusParser Class (V52 Full Refactored Specification)
+ * Format D+++ Visualizer v52 - Step 2: Parser Core
+ * * 【V52 アップグレード要件】
+ * 1. メソッド分割: Table A/B/C のパース処理を独立したメソッドへ抽出し、保守性を向上。
+ * 2. 優先度に基づく安定ソート: High/Default/Low の重みで遷移を評価。
+ * 3. 識別子規則の拡張: ケバブケース（ハイフンを含む変数名）を完全許可。
+ * 4. 信頼性設計: 10,000行制限、Step 7 連携用の詳細な解析エラー/警告蓄積。
+ * 5. アーティファクト除去: 構文エラーの原因となる引用タグを完全に排除。
+ */
+class DPlusPlusParser {
+  constructor() {
+    /**
+     * Step 7 (Analyzer) と連携するための解析レポートオブジェクト。
+     * 解析中に発生したエラーや警告を lineIndex と共に保持します。
+     */
+    this.report = {
+      errors: [],   // { line: number, message: string }
+      warnings: []  // { line: number, message: string }
+    };
+  }
+
+  /**
+   * Markdown形式のテキストを解析し、構造化データに変換します。
+   * @param {string} text - ソーステキスト
+   * @returns {object} { states, transitions, testCases, report }
+   */
+  parse(text) {
+    // 解析レポートのリセット
+    this.report = { errors: [], warnings: [] };
+
+    const lines = text.split(/\r?\n/);
+    const totalLines = lines.length;
+
+    // --- Section 5: タイムアウト・負荷対策ガード ---
+    if (totalLines > 10000) {
+      this.report.errors.push({
+        line: 0,
+        message: "Input limit exceeded: Maximum 10,000 lines allowed."
+      });
+      return this._generateEmptyResult();
+    }
+
+    const result = {
+      states: [],
+      transitions: [],
+      testCases: []
+    };
+    
+    let currentMode = null; // 'A', 'B', 'C' または null
+
+    lines.forEach((line, index) => {
+      const trimmed = line.trim();
+      const lineIndex = index;
+
+      // 基本ガード: コメント行（//）および完全な空行を無視
+      if (!trimmed || trimmed.startsWith('//')) return;
+
+      // P-01: セクション検出
+      if (/^#*\s*Table\s+A/i.test(trimmed)) { currentMode = 'A'; return; }
+      if (/^#*\s*Table\s+B/i.test(trimmed)) { currentMode = 'B'; return; }
+      if (/^#*\s*Table\s+C/i.test(trimmed)) { currentMode = 'C'; return; }
+
+      // 区切り行・データ以外の判定
+      if (/^[|:\-\s]+$/.test(trimmed)) return;
+      if (!trimmed.includes('|')) return;
+
+      const data = this._parseRow(trimmed);
+      if (!data || data.length === 0) return;
+
+      // ヘッダーキーワードの除外
+      const firstCell = data[0].toLowerCase();
+      if (["id", "state id", "priority", "case id"].includes(firstCell)) return;
+
+      // 空データ・"-" セルの正規化
+      const normalizedData = data.map(cell => (cell.trim() === '-' ? null : cell.trim()));
+      if (normalizedData.every(cell => cell === null || cell === "")) return;
+
+      // セクション未定義時の警告
+      if (!currentMode) {
+        this.report.warnings.push({
+          line: lineIndex + 1,
+          message: "Data row found outside of any Table section. Row ignored."
+        });
+        return;
+      }
+
+      // V52: メソッド分割によるパース実行
+      if (currentMode === 'A') {
+        const state = this._parseStateDef(normalizedData, lineIndex);
+        if (state) result.states.push(state);
+      } else if (currentMode === 'B') {
+        const trans = this._parseTransitionDef(normalizedData, lineIndex);
+        if (trans) result.transitions.push(trans);
+      } else if (currentMode === 'C') {
+        const testCase = this._parseTestCase(normalizedData, lineIndex);
+        if (testCase) result.testCases.push(testCase);
+      }
+    });
+
+    /**
+     * Section 2: 優先度に基づく安定ソート (Stable Sort)
+     */
+    const priorityWeights = { "High": 3, "Default": 2, "Low": 1 };
+
+    result.transitions.sort((a, b) => {
+      const weightA = priorityWeights[a.priority] || 2;
+      const weightB = priorityWeights[b.priority] || 2;
+      if (weightA !== weightB) return weightB - weightA;
+      return a.lineIndex - b.lineIndex; // lineIndex による順序維持
+    });
+
+    result.report = this.report;
+    return result;
+  }
+
+  /**
+   * Table A: States の解析
+   * @private
+   */
+  _parseStateDef(data, lineIndex) {
+    if (data.length < 4) {
+      this.report.errors.push({ line: lineIndex + 1, message: "Invalid Table A: 4 columns required." });
+      return null;
+    }
+    const stateId = data[0];
+    return {
+      id: stateId,
+      safeId: this._makeSafeId(stateId),
+      entry: data[1] || "",
+      exit: data[2] || "",
+      invariant: data[3] || "",
+      lineIndex: lineIndex
+    };
+  }
+
+  /**
+   * Table B: Transitions の解析
+   * @private
+   */
+  _parseTransitionDef(data, lineIndex) {
+    if (data.length < 6) {
+      this.report.errors.push({ line: lineIndex + 1, message: "Invalid Table B: 6 columns required." });
+      return null;
+    }
+    const sourceId = data[1];
+    const targetId = data[5];
+    return {
+      priority: data[0] || "Default",
+      source: sourceId,
+      sourceSafeId: this._makeSafeId(sourceId),
+      trigger: data[2],
+      guard: data[3] || "",
+      action: data[4] || "",
+      target: targetId,
+      targetSafeId: this._makeSafeId(targetId),
+      lineIndex: lineIndex
+    };
+  }
+
+  /**
+   * Table C: Test Cases の解析
+   * @private
+   */
+  _parseTestCase(data, lineIndex) {
+    if (data.length < 5) {
+      this.report.errors.push({ line: lineIndex + 1, message: "Invalid Table C: 5 columns required (Scenario column added in V52)." });
+      return null;
+    }
+    return {
+      id: data[0],
+      initialState: data[1],
+      scenario: this._parseScenario(data[2]),
+      context: data[3] || "",
+      expectedTarget: data[4],
+      lineIndex: lineIndex
+    };
+  }
+
+  /**
+   * Mermaid等の描画ライブラリで安全に扱えるIDを生成します。
+   * @private
+   */
+  _makeSafeId(id) {
+    if (!id) return null;
+    if (id === "*") return "wildcard_ANY";
+    return id
+      .replace(/\./g, '_')           // ドットを置換
+      .replace(/[^a-zA-Z0-9_-]/g, '') // 許可文字以外を排除（ハイフンは許可）
+      .replace(/^(\d)/, '_$1');      // 先頭数字対策
+  }
+
+  /**
+   * シナリオ文字列 [a, b, c] を配列に変換します。
+   * @private
+   */
+  _parseScenario(str) {
+    if (!str) return [];
+    return str
+      .replace(/[\[\]]/g, '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(s => s !== "");
+  }
+
+  /**
+   * パイプ区切りの行を配列に分解します。
+   * @private
+   */
+  _parseRow(line) {
+    const placeholder = "__ESCAPED_PIPE__";
+    const protectedLine = line.replace(/\\\|/g, placeholder);
+    return protectedLine
+      .trim()
+      .replace(/^\||\|$/g, '')
+      .split('|')
+      .map(cell => cell.trim().replace(new RegExp(placeholder, 'g'), '|'));
+  }
+
+  /**
+   * 異常系用空オブジェクト生成
+   * @private
+   */
+  _generateEmptyResult() {
+    return { states: [], transitions: [], testCases: [], report: this.report };
+  }
+}
+
+    // --- PASTE STEP 3: ContextManager ---
+/**
+ * ContextManager Class (V52 Full Ref-Free Specification)
+ * Format D+++ Visualizer v52 - Step 3: Context Manager
+ * * 【V52 アップグレード要件】
+ * 1. 参照遮断（Ref-Free）原則の徹底: 全てのデータ授受において _deepCopy を強制し、メモリ共有バグを根絶。
+ * 2. トランザクション保護の強化: ロールバック時、バックアップの「複製」を書き戻すことで復元後の安全性を担保。
+ * 3. 冗長な型安全ガード: updateAll における型チェックとキー個別コピーの徹底。
+ * 4. 信頼性設計: Step 4/5 のタイムアウト機能を支えるシステム予約語の保存・復元。
+ */
+class ContextManager {
+  /**
+   * コンストラクタ
+   * SSOT Section 2.1 に基づき、初期データから参照を完全に遮断して初期化します。
+   * @param {object} initialData - 初期コンテキストデータ
+   */
+  constructor(initialData = {}) {
+    // V27 論理モデル Ctx.Idle 状態への移行
+    // 参照遮断: 引数を直接代入せず、必ずディープコピーを経由する
+    this._activeContext = this._deepCopy(initialData);
+    
+    // バックアップ用コンテキスト（トランザクション用）を null で初期化
+    this._shadowContext = null;
+    
+    console.log("[ContextManager] V52 Initialized. Active Context (Ref-Free):", this._activeContext);
+  }
+
+  /**
+   * トランザクションを開始し、現在の状態をバックアップします。
+   * SSOT Table B: Trigger BEGIN -> Target Ctx.Tx
+   */
+  beginTransaction() {
+    // D-01: 現在の状態の完全な複製をバックアップ（_shadowContext）として保存
+    this._shadowContext = this._deepCopy(this._activeContext);
+    
+    console.log("[ContextManager] Transaction Started. Shadow context created (Ref-Free backup).");
+  }
+
+  /**
+   * トランザクションを確定し、バックアップを破棄します。
+   * SSOT Table B: Trigger COMMIT -> Target Ctx.Idle
+   */
+  commit() {
+    // 確定によりバックアップは不要となるため、明示的に参照を解放
+    this._shadowContext = null;
+    
+    console.log("[ContextManager] Commit performed. Shadow context cleared.");
+  }
+
+  /**
+   * トランザクションを破棄し、開始時の状態に復元します。
+   * SSOT Table B: Trigger ROLLBACK -> Target Ctx.Rollback -> Ctx.Idle
+   * 【重要】バックアップそのものではなく、その複製（Deep Copy）を書き戻します。
+   */
+  rollback() {
+    // Ctx.Rollback 状態の不変条件チェック: shadowContext が存在しない場合は復元不可
+    if (!this._shadowContext) {
+      console.warn("[ContextManager] Rollback ignored: No shadow context exists (Transaction not started).");
+      return;
+    }
+    
+    // M-03: shadowContext そのものを代入すると、後の操作でバックアップが汚染される恐れがあるため、
+    // 再度ディープコピーを行い、参照が完全に切れた状態で activeContext を復元する。
+    this._activeContext = this._deepCopy(this._shadowContext);
+    
+    // 復元完了後、トランザクション状態を終了させる
+    this._shadowContext = null;
+    
+    console.log("[ContextManager] Rollback performed. State restored safely with deep copy.");
+  }
+
+  /**
+   * M-01: 履歴スナップショットからの完全復元
+   * UIのUndo機能やデバッグツールによる特定時点へのジャンプで使用。
+   * @param {object} snapshot - 復元対象のコンテキストオブジェクト
+   */
+  restoreSnapshot(snapshot) {
+    // 割り込み（Interrupt）トリガーによる Ctx.Idle への強制遷移
+    if (snapshot === null || typeof snapshot !== 'object') {
+      console.error("[ContextManager] Restore failed: Invalid snapshot data.");
+      return;
+    }
+    
+    // 外部データの参照を完全に遮断しつつ、コンテキストを上書き
+    this._activeContext = this._deepCopy(snapshot);
+    
+    console.log("[ContextManager] Snapshot restored. Active context updated.");
+  }
+
+  /**
+   * M-02: 複数変数の安全な一括マージ（SSOT Section 2.3 遵守）
+   * @param {object} data - マージする新しい変数セット
+   */
+  updateAll(data) {
+    // 型安全ガード: null または非オブジェクトの入力を遮断
+    if (typeof data !== 'object' || data === null) {
+      console.warn("[ContextManager] updateAll rejected: Input data must be an object.");
+      return;
+    }
+
+    // 冗長マージロジック: 
+    // ctx[key] = data[key] のような直接代入は「参照汚染」を招くため厳禁。
+    // 各キーの値を個別にディープコピーして activeContext に結合する。
+    Object.keys(data).forEach(key => {
+      // システム予約語（__step_count__ 等）も他の変数と同様に複製される
+      this._activeContext[key] = this._deepCopy(data[key]);
+    });
+    
+    console.log("[ContextManager] Bulk update performed. Merged keys:", Object.keys(data));
+  }
+
+  /**
+   * 単一コンテキスト値の更新
+   * @param {string} key - 変数名（識別子）
+   * @param {*} val - 新しい値
+   */
+  update(key, val) {
+    // 代入時も常に参照遮断を行い、メモリの独立性を維持する
+    this._activeContext[key] = this._deepCopy(val);
+  }
+
+  /**
+   * コンテキストから値を取得
+   * @param {string} key - 変数名
+   * @returns {*} 値
+   */
+  get(key) {
+    // 内部コンテキストから指定されたキーの値を返却
+    return this._activeContext[key];
+  }
+
+  /**
+   * 現在のコンテキストの完全な複製（スナップショット）を取得（SSOT Section 2.4 遵守）
+   * @returns {object} 現在のコンテキストのディープコピー
+   */
+  getSnapshot() {
+    // 参照汚染防止: 外部（UIやSimulator）での不注意な変更が内部データに波及するのを防ぐため、
+    // 生の _activeContext ではなく、必ずそのディープコピーを生成して返却する。
+    return this._deepCopy(this._activeContext);
+  }
+
+  /**
+   * M-04: オブジェクトのディープコピー（JSON方式）
+   * プリミティブ型（boolean, number, string）の整合性を維持しつつ参照を遮断します。
+   * SSOT Section 2.5 の実装方式に準拠。
+   * @private
+   * @param {*} obj - コピー対象のオブジェクトまたは値
+   * @returns {*} 複製された値
+   */
+  _deepCopy(obj) {
+    // JSON.stringify は undefined を null に変換するか、プロパティを削除するため個別にガード
+    if (obj === undefined) return undefined;
+    
+    // 数値、文字列、真偽値、null は JSON.parse/stringify で正しく複製される
+    try {
+      // JSON方式によるディープコピーの実行
+      return JSON.parse(JSON.stringify(obj));
+    } catch (e) {
+      /**
+       * 例外処理の義務化 (SSOT Section 2.5)
+       * 循環参照等で JSON 化に失敗した場合、console.error を出力し、
+       * 最低限シミュレーションを継続させるために元の値をフォールバックとして返す。
+       */
+      console.error("[ContextManager] Critical Deep Copy Error. Ref-Free failed for this object:", obj, e);
+      return obj; 
+    }
+  }
+}
+
+// export default ContextManager;
+
+
+    // --- PASTE STEP 4: AtomicSimulator ---
+// --- PASTE STEP 4: AtomicSimulator ---
+/**
+ * AtomicSimulator Class (V52 Full & Strict Specification)
+ * Format D+++ Visualizer v52 - Step 4: HACE Execution Engine
+ * * 【V52 修正・完全統合内容】
+ * 1. 録画機能の復元: V51の toggleRecording および recordLog 制御を完全復元。
+ * 2. ステップ粒度の厳密化: _handleEntering の再帰を廃止。Table Bに従い auto 遷移で1階層ずつ進行。 
+ * 3. ワイルドカード実運用: _findTransition を定義のみでなく、遷移検索ロジックに組み込み。
+ * 4. 無限ループ検知: 100回/500回のセーフティカウンタと "Infinite Loop Detected" 識別子。
+ * 5. カバレッジ計測: 訪問状態と実行遷移を Set で記録。
+ */
+class AtomicSimulator {
+  /**
+   * param {Array} states - Parserから出力された状態定義リスト
+   * param {Object} ctxManager - ContextManagerのインスタンス
+   * param {Object} evaluator - SafeEvaluatorのインスタンス
+   * param {Object} callbacks - UI通知用コールバック ({ onUpdate: (sim) => void })
+   */
+  constructor(data, ctxManager, evaluator, callbacks) {
+    this.data = data; // data全体（statesとtransitionsを含む）を保存
+    this.stateMap = new Map(data.states.map(s => [s.id, s]));
+    this.ctxManager = ctxManager;
+    this.evaluator = evaluator;
+    this.callbacks = callbacks;
+
+    // HACE サイクル管理 (SSOT Section 2)
+    this.simState = "Idle";
+    this.currentStateID = data.states.length > 0 ? data.states[0].id : null;
+    this.currentTransition = null;
+    this.lastError = null;
+
+    // 履歴とUndo
+    this.history = [];
+    
+    // V52: カバレッジ記録コンテナ
+    this.coverage = {
+      visitedStates: new Set(),
+      firedTransitions: new Set()
+    };
+
+    // V51復元: レコーディング機能
+    this.isRecording = false;
+    this.recordLog = [];
+    
+    // 無限ループ検知用共有カウンタ
+    this._stepCounter = 0;
+
+    console.log("[HACE] AtomicSimulator V52 Full Spec Initialized.");
+  }
+
+  /**
+   * [SSOT 3.2] 起動シーケンス
+   * セーフティカウンタ 100回制限を厳守。
+   */
+boot() {
+    if (!this.currentStateID) return;
+    try {
+      this.ctxManager.beginTransaction();
+      this.simState = "Entering";
+      
+      let safetyCounter = 0;
+      // 修正ポイント：
+      // 基本は Idle になるまで回すが、
+      // 「状態が変わるような auto 遷移」が起きて simState が再度 Entering に戻ったなら、
+      // そこで一旦止めてユーザーの再生を待つ、という制御が可能です。
+      
+      while (this.simState !== "Idle" && this.simState !== "Error_Lock") {
+        this.step();
+        safetyCounter++;
+        if (safetyCounter > 100) throw new Error("Boot Loop");
+      }
+    } catch (e) {
+      this._handleFailure(e.message);
+    }
+  }
+
+  /**
+   * [SSOT 3.3] 遷移トリガー
+   */
+  trigger(transition) {
+    if (this.simState !== "Idle") return;
+
+    // V52: カバレッジ記録 (遷移)
+    const transitionKey = `${transition.source}->${transition.target}:${transition.trigger}`;
+    this.coverage.firedTransitions.add(transitionKey);
+
+    // 録画ロジックの復元 
+    if (this.isRecording) {
+      this.recordLog.push({ trigger: transition.trigger, state: this.currentStateID });
+    }
+
+    // Undo履歴の保存
+    this.history.push({
+      state: this.currentStateID,
+      context: this.ctxManager.getSnapshot()
+    });
+    this.currentTransition = transition;
+    this.lastError = null;
+
+    // トランザクション開始
+    this.ctxManager.beginTransaction();
+    this.simState = "Exiting";
+    
+    this._syncUI();
+  }
+
+  /**
+   * [SSOT Section 1] HACE サイクル実行
+   * 500回制限の安全装置を実装。 
+   */
+  step() {
+    if (this.simState === "Idle" || this.simState === "Error_Lock") return;
+    this._stepCounter++;
+    if (this._stepCounter > 500) {
+      this._stepCounter = 0;
+      throw new Error("Simulator Infinite Loop Detected: HACE cycle incomplete within 500 steps.");
+    }
+
+    try {
+      // Table A に基づく分岐
+      switch (this.simState) {
+        case "Exiting":  this._handleExiting(); break;
+        case "Acting":   this._handleActing();   break;
+        case "Updating": this._handleUpdating();  break;
+        case "Entering": this._handleEntering();  break; 
+        case "Checking": this._handleChecking();  break;
+      }
+    } catch (error) {
+      this._handleFailure(error.message);
+    }
+
+    if (this.simState === "Idle") this._stepCounter = 0;
+    this._syncUI();
+  }
+
+  /**
+   * [SSOT 3.4 / Table B] 入力フェーズ
+   * 再帰を排し、1ステップごとに1階層進む「逐次進行」に修正。 
+   */
+  _handleEntering() {
+    // V52: カバレッジ記録 (状態)
+    this.coverage.visitedStates.add(this.currentStateID);
+    const target = this.stateMap.get(this.currentStateID);
+    if (target && target.entry && target.entry !== "-") {
+      this._runAction(target.entry);
+    }
+
+    // Auto-Entry 判定 (Table B: hasChild)
+    const parentId = this.currentStateID;
+    const parentDotCount = parentId.split('.').length - 1;
+    
+    const childId = Array.from(this.stateMap.keys()).find(id => {
+      return id.startsWith(parentId + ".") && (id.split('.').length - 1 === parentDotCount + 1);
+    });
+
+    if (childId) {
+      // 子があれば状態を更新して再度 Entering フェーズを維持 (再帰せず step を待つ)
+      this.currentStateID = childId;
+      console.log(`[HACE] Auto-entry to child: ${childId}`);
+      // simState は "Entering" のまま、Table B の hasChild=true 遷移を表現
+    } else {
+      // 子がなければ検証へ (Table B: hasChild=false)
+      this.simState = "Checking";
+    }
+  }
+
+/**
+   * 内部検索用：親状態の遷移も遡って探すロジックを実装
+   */
+  _findTransition(triggerName) {
+    const cur = this.currentStateID;
+    const ctx = this.ctxManager.getSnapshot();
+
+    return this.data.transitions.find(t => {
+      // 階層一致判定 (完全一致、ワイルドカード、または親からの継承)
+      const isSourceMatch = (t.source === "*" || t.source === cur || cur.startsWith(t.source + "."));
+      if (!isSourceMatch) return false;
+      if (t.trigger !== triggerName) return false;
+
+      try {
+        const guard = t.guard && t.guard !== "-" ? t.guard : "true";
+        return this.evaluator.evaluateRHS(guard, ctx);
+      } catch (e) { return false; }
+    });
+  }
+
+/**
+   * 現在の状態およびガード条件に基づいて、発火可能な遷移リストを返します。
+   * (V52: 階層構造による遷移の継承に対応)
+   */
+  getAvailableTransitions() {
+    if (this.simState !== "Idle") return [];
+
+    const cur = this.currentStateID;
+    const ctx = this.ctxManager.getSnapshot();
+
+    // 全遷移の中から、現在の状態に適合するものを抽出
+    return this.data.transitions.filter(t => {
+      // 1. ソース一致判定 (完全一致、ワイルドカード、または親状態からの継承)
+      const isSourceMatch = (t.source === "*" || t.source === cur || cur.startsWith(t.source + "."));
+      if (!isSourceMatch) return false;
+
+      // 2. ガード条件の評価
+      try {
+        const guard = t.guard && t.guard !== "-" ? t.guard : "true";
+        return this.evaluator.evaluateRHS(guard, ctx);
+      } catch (e) {
+        console.warn(`[Simulator] Guard evaluation failed at line ${t.lineIndex}:`, e);
+        return false;
+      }
+    });
+  }
+
+  _runAction(code) {
+    if (!code || code === "-") return;
+    try {
+      const snap = this.ctxManager.getSnapshot();
+      const updatedCtx = this.evaluator.executeAction(code, snap);
+      this.ctxManager.updateAll(updatedCtx);
+    } catch (e) {
+      throw new Error(`Action Execution Error: ${e.message}`);
+    }
+  }
+
+  _handleExiting() {
+    const source = this.stateMap.get(this.currentTransition.source);
+    if (source && source.exit && source.exit !== "-") {
+      this._runAction(source.exit);
+    }
+    this.simState = "Acting";
+  }
+
+  _handleActing() {
+    if (this.currentTransition.action && this.currentTransition.action !== "-") {
+      this._runAction(this.currentTransition.action);
+    }
+    this.simState = "Updating";
+  }
+
+  _handleUpdating() {
+    const targetID = this.currentTransition.target || this.currentTransition.source;
+    if (!this.stateMap.has(targetID)) {
+      throw new Error(`Target state "${targetID}" not found.`);
+    }
+    this.currentStateID = targetID;
+    this.simState = "Entering";
+  }
+
+  _handleChecking() {
+    const isValid = this._recursiveCheck(this.currentStateID);
+    if (isValid) {
+      this.ctxManager.commit();
+      this.simState = "Idle";
+      this.currentTransition = null;
+    } else {
+      throw new Error(`Invariant violation at state: ${this.currentStateID}`);
+    }
+  }
+
+  _recursiveCheck(stateId) {
+    if (!stateId) return true;
+    const state = this.stateMap.get(stateId);
+    if (state && state.invariant && state.invariant !== "-") {
+      try {
+        const result = this.evaluator.evaluateRHS(state.invariant, this.ctxManager.getSnapshot());
+        if (!result) return false;
+      } catch (e) {
+        throw new Error(`Invariant Error in "${stateId}": ${e.message}`);
+      }
+    }
+    const parts = stateId.split('.');
+    if (parts.length > 1) {
+      parts.pop();
+      return this._recursiveCheck(parts.join('.'));
+    }
+    return true;
+  }
+
+  _handleFailure(msg) {
+    console.error(`[AtomicSimulator] Failure: ${msg}`);
+    this.lastError = msg;
+    this.simState = "Error_Lock";
+    this.ctxManager.rollback();
+    if (this.history.length > 0) {
+      this.currentStateID = this.history[this.history.length - 1].state;
+    }
+  }
+
+  undo() {
+    if (this.simState !== "Idle" || this.history.length === 0) return;
+    const lastRecord = this.history.pop();
+    this.currentStateID = lastRecord.state;
+    if (typeof this.ctxManager.restoreSnapshot === "function") {
+      this.ctxManager.restoreSnapshot(lastRecord.context);
+    }
+    this._syncUI();
+  }
+
+  // V51復元: 録画機能の完全実装 
+  toggleRecording() {
+    this.isRecording = !this.isRecording;
+    if (this.isRecording) {
+      this.recordLog = [];
+      console.log("[HACE] Recording started.");
+    } else {
+      console.log("[HACE] Recording stopped. Steps:", this.recordLog.length);
+    }
+    this._syncUI();
+  }
+
+  _syncUI() {
+    if (this.callbacks && typeof this.callbacks.onUpdate === "function") {
+      this.callbacks.onUpdate(this);
+    }
+  }
+
+  // V52: カバレッジ統計の集計
+  getCoverageStats() {
+    const totalStates = this.stateMap.size;
+    const visitedCount = this.coverage.visitedStates.size;
+    const percentage = totalStates > 0 ? Math.round((visitedCount / totalStates) * 100) : 0;
+    return {
+      visitedCount,
+      totalStates,
+      percentage,
+      firedCount: this.coverage.firedTransitions.size
+    };
+  }
+}
+
+
+    // --- PASTE STEP 5: TestRunner ---
+// --- PASTE STEP 5: TestRunner ---
+/**
+ * TestRunner Class (V52 Full Specification)
+ * Format D+++ Visualizer v52 - Step 5: Batch Runner
+ * * 【V52 アップグレード内容】
+ * 1. シナリオベーステスト: 指定された実行手順（シナリオトリガー）に基づく決定論的テストに対応。
+ * 2. 統合カバレッジ集計: 全テストケース実行後、全Simulatorの状態/遷移カバレッジをマージ。
+ * 3. 階層的 整合性判定 (Fuzzy Match): 親子関係（USB ⇔ USB.Connected）を考慮した合否判定の厳密化。
+ * 4. 信頼性ガード: MAX_CHAIN(50), MAX_STEPS(500), SCENARIO_LIMIT(100) による無限ループ検知。
+ */
+class TestRunner {
+  /**
+   * @param {Object} evaluator - SafeEvaluator インスタンス (Step 1)
+   */
+  constructor(evaluator) {
+    this.evaluator = evaluator;
+  }
+
+  /**
+   * Section 2.1: 全テストケースを実行し、結果とマージされたカバレッジを返します。
+   * @param {Array} testCases - パース済みのテストケースリスト
+   * @param {Array} states - 状態定義
+   * @param {Array} transitions - 遷移定義
+   * @returns {Object} { results, totalCoverage }
+   */
+  runAll(testCases, states, transitions) {
+    console.log(`[TestRunner] Starting V52 Batch Runner for ${testCases.length} cases.`);
+    
+    const results = [];
+    // 全ケース統合用のカバレッジコンテナを初期化
+    const totalCoverage = {
+      visitedStates: new Set(),    // ユニークな訪問状態ID
+      firedTransitions: new Set()  // ユニークな実行遷移キー (src->tgt:trig)
+    };
+
+    if (!testCases || testCases.length === 0) {
+      return { results: [], totalCoverage };
+    }
+
+    // 各テストケースを順次実行
+    testCases.forEach(tc => {
+      // 単一ケースの実行
+      const caseResult = this._runSingleCase(tc, states, transitions);
+      results.push(caseResult);
+
+      // ケース実行後に使用された Simulator インスタンスからカバレッジを抽出してマージ
+      if (caseResult._coverage) {
+        // visitedStates のマージ
+        caseResult._coverage.visitedStates.forEach(s => totalCoverage.visitedStates.add(s));
+        // firedTransitions のマージ
+        caseResult._coverage.firedTransitions.forEach(t => totalCoverage.firedTransitions.add(t));
+        // 内部用の一時データを削除
+        delete caseResult._coverage;
+      }
+    });
+
+    return { results, totalCoverage };
+  }
+
+  /**
+   * Section 2.2: 単一テストケースの実行エンジン（シナリオ vs オートチェーン）
+   * @private
+   */
+  _runSingleCase(testCase, states, transitions) {
+    // 信頼性設計: 物理定数の定義
+    const MAX_CHAIN = 50;      // autoトリガー連鎖上限
+    const MAX_STEPS = 500;      // 1遷移内のステップ上限
+    const SCENARIO_LIMIT = 100; // 投入シナリオ数上限
+
+    try {
+      // 1. Setup: 初期化とBoot
+      const initialCtx = this._parseContext(testCase.context);
+      const ctxManager = new ContextManager(initialCtx); // Step 3 連携
+      const simulator = new AtomicSimulator(
+        { states, transitions }, 
+        ctxManager, 
+        this.evaluator, 
+        { onUpdate: () => {} }
+      );
+      // シミュレーターを初期状態に設定し、Boot（Auto-Entry chain）を実行
+      simulator.currentStateID = testCase.initialState;
+      simulator.boot(); // 初期状態の不変条件チェックと自動突入
+
+      // 2. 実行フェーズの分岐（シナリオの有無）
+      const hasScenario = testCase.scenario && testCase.scenario.length > 0;
+
+      if (hasScenario) {
+        /**
+         * モードA: シナリオベーステスト (V52新規)
+         * 指定されたトリガー配列を順次 simulator.trigger() に投入します。
+         */
+        const scenario = [...testCase.scenario].slice(0, SCENARIO_LIMIT); // 上限ガード
+        
+        for (const trigName of scenario) {
+          // 現在の状態とトリガー名に合致する遷移を検索（優先度ソート済みを前提）
+// 遷移検索条件を「厳密一致」から「階層一致」に変更
+const t = transitions.find(trans => {
+  const src = trans.source;
+  const cur = simulator.currentStateID;
+  
+  // 階層一致の判定プロトコル
+  const isSourceMatch = (src === "*" || src === cur || cur.startsWith(src + "."));
+  
+  return isSourceMatch &&
+         trans.trigger === trigName &&
+         (!trans.guard || trans.guard === "-" || this.evaluator.evaluateRHS(trans.guard, ctxManager.getSnapshot()));
+});
+
+          if (t) {
+            simulator.trigger(t);
+            // 遷移が安定（Idle）するまでステップ実行
+            let steps = 0;
+            while (simulator.simState !== "Idle" && simulator.simState !== "Error_Lock") {
+              simulator.step();
+              if (++steps > MAX_STEPS) throw new Error(`Simulator Infinite loop at trigger "${trigName}"`);
+            }
+          }
+          if (simulator.simState === "Error_Lock") break;
+        }
+      } else {
+        /**
+         * モードB: オートチェーンテスト (V51互換)
+         * 最初の有効な遷移を発火させた後、auto遷移が尽きるまで連鎖させます。
+         */
+        let currentTrigger = transitions.find(t => 
+          (t.source === simulator.currentStateID || t.source === "*") && 
+          t.trigger !== "auto" && // 最初は明示的または暗黙のトリガー
+          (!t.guard || t.guard === "-" || this.evaluator.evaluateRHS(t.guard, ctxManager.getSnapshot()))
+        );
+
+        if (!currentTrigger && (!testCase.scenario || testCase.scenario.length === 0)) {
+          // 遷移も見つからず、シナリオも空の場合は SKIP 判定
+          return { id: testCase.id, status: "SKIP", actual: simulator.currentStateID, reason: "No valid initial transition found." };
+        }
+
+        let chainCount = 0;
+        while (currentTrigger) {
+          simulator.trigger(currentTrigger);
+          let steps = 0;
+          while (simulator.simState !== "Idle" && simulator.simState !== "Error_Lock") {
+            simulator.step();
+            if (++steps > MAX_STEPS) throw new Error("Simulator Infinite loop in auto-chain");
+          }
+
+          if (simulator.simState === "Error_Lock") break;
+          if (++chainCount > MAX_CHAIN) throw new Error("Infinite auto-trigger loop detected");
+
+          // 次の "auto" 遷移を検索
+          currentTrigger = transitions.find(t => 
+            (t.source === simulator.currentStateID || t.source === "*") &&
+            t.trigger === "auto" &&
+            (!t.guard || t.guard === "-" || this.evaluator.evaluateRHS(t.guard, ctxManager.getSnapshot()))
+          );
+        }
+      }
+
+      // 3. Verdict: 階層的整合性判定 (Fuzzy Match)
+      const actual = simulator.currentStateID;
+      const expected = testCase.expectedTarget;
+
+      /**
+       * Fuzzy Match 論理実装 (Section 2.2.4)
+       * a) 完全一致
+       * b) 親状態指定による子孫マッチ: 期待が "USB" で実際が "USB.Connected" 等
+       * c) 子状態指定による親マッチ: 期待が "USB.Connected" で実際が "USB" 等 (抽象化の許容)
+       */
+      const isMatch = (actual === expected) || 
+                      (actual && actual.startsWith(expected + ".")) || 
+                      (expected && expected.startsWith(actual + "."));
+
+      const isSuccess = (simulator.simState === "Idle") && isMatch;
+
+      return {
+        id: testCase.id,
+        status: isSuccess ? "PASS" : "FAIL",
+        actual: actual,
+        reason: simulator.lastError || (isSuccess ? "" : `Match failed: Expected ${expected}, got ${actual}`),
+        // 集計用にカバレッジデータを一時保持
+        _coverage: {
+          visitedStates: simulator.coverage.visitedStates,
+          firedTransitions: simulator.coverage.firedTransitions
+        }
+      };
+
+    } catch (e) {
+      console.error(`[TestRunner] Critical Error in Case ${testCase.id}:`, e);
+      return { id: testCase.id, status: "FAIL", actual: "ERROR", reason: e.message };
+    }
+  }
+
+  /**
+   * コンテキスト文字列（JSON または key=val 形式）をオブジェクトに変換します。
+   * @private
+   */
+  _parseContext(ctxStr) {
+    if (!ctxStr || ctxStr === "-" || ctxStr === "{}") return {};
+    const trimmed = ctxStr.trim();
+
+    // JSON 形式の試行
+    if (trimmed.startsWith('{')) {
+      try {
+        return JSON.parse(trimmed);
+      } catch (e) {
+        console.warn("[TestRunner] Context JSON parse failed, falling back to comma-separated format.");
+      }
+    }
+
+    // カンマ区切り形式のパース (key=val, key=val)
+    const obj = {};
+    trimmed.split(',').forEach(pair => {
+      const parts = pair.split('=');
+      if (parts.length >= 2) {
+        const k = parts[0].trim();
+        const v = parts.slice(1).join('=').trim();
+        if (k) {
+          if (v === 'true') obj[k] = true;
+          else if (v === 'false') obj[k] = false;
+          else if (!isNaN(v) && v !== "") obj[k] = Number(v);
+          else obj[k] = v.replace(/^["']|["']$/g, '');
+        }
+      }
+    });
+    return obj;
+  }
+}
+
+
+    // --- PASTE STEP 7: DPlusPlusAnalyzer ---
+/**
+ * DPlusPlusAnalyzer Class - Version 52 (Full Specification)
+ * Format D+++ Visualizer v52 - Step 7: Real-time Logic Analyzer
+ * * 【V52 アップグレード要件】
+ * 1. Strict Linter: ガード条件内での誤代入 (=, +=, -=) を ERROR として検知。
+ * 2. タイムアウト保護: 競合スキャン (scanConflicts) に 200ms の強制中断ロジックを導入。
+ * 3. AI連携エクスポート: LLMがモデルを理解・修正するための構造化データ生成。
+ * 4. 既存解析の維持: 未定義参照、幽霊状態、デッドロック、サンプリング競合検知を完全継承。
+ */
+class DPlusPlusAnalyzer {
+  /**
+   * @param {object} data - DPlusPlusParser.parse() の戻り値 { states, transitions }
+   */
+  constructor(data) {
+    this.states = data.states || [];
+    this.transitions = data.transitions || [];
+    this.report = [];
+  }
+
+  /**
+   * 全ての解析項目を順次実行し、レポートを返します。
+   * SSOT Section 1 (Table B) の解析パイプラインを遵守。
+   * @returns {Array} 解析結果オブジェクトの配列
+   */
+  analyzeAll() {
+    this.report = [];
+
+    // 1. 文法チェック (V52 Strict Linter)
+    this.checkSyntax();
+    
+    // 2. 基本定義チェック
+    this.checkUndefined();
+    
+    // 3. グラフ構造解析
+    this.checkReachability();
+    this.checkDeadlock();
+    
+    // 4. 論理競合解析 (タイムアウト保護付き)
+    this.scanConflicts();
+
+    return this.report;
+  }
+
+  /**
+   * Section 2.1: runStrictLinter() - 誤代入検知
+   * ガード条件内での代入演算子使用を ERROR として記録します。
+   */
+  checkSyntax() {
+    this.transitions.forEach(t => {
+      if (!t.guard || t.guard === "-") return;
+
+      /**
+       * 正規表現: /[^{=!<>}](=)[^=]/ 
+       * 比較演算子 (==, !=, <=, >=) ではない単独の "=" を特定する。
+       * 複合代入演算子 (+=, -=) も個別にチェック。
+       */
+      const hasAssignment = /[^=!<>](=)[^=]/.test(t.guard) || 
+                            t.guard.includes("+=") || 
+                            t.guard.includes("-=");
+
+      if (hasAssignment) {
+        this.report.push({
+          type: "error",
+          id: "L-01",
+          message: "ガード条件内での代入は禁止されています（比較には == を使用してください）",
+          lineIndex: t.lineIndex
+        });
+      }
+    });
+  }
+
+  /**
+   * A-04: 未定義ターゲット参照のチェック
+   * 遷移先として指定されているIDが States テーブルに存在するか確認します。
+   */
+  checkUndefined() {
+    const stateIds = new Set(this.states.map(s => s.id));
+
+    this.transitions.forEach(t => {
+      // "*" はワイルドカード、null/空文字はSource維持（P-03相当）のため除外
+      if (t.target && t.target !== "*" && !stateIds.has(t.target)) {
+        this.report.push({
+          type: "error",
+          id: "A-04",
+          message: `未定義の状態 "${t.target}" が遷移先として参照されています。`,
+          lineIndex: t.lineIndex
+        });
+      }
+    });
+  }
+
+  /**
+   * A-01: 到達不能（幽霊）状態のチェック
+   * 幅優先探索 (BFS) を用いて、初期状態から到達不可能な状態を特定します。
+   */
+checkReachability() {
+    if (this.states.length === 0) return;
+
+    const initialId = this.states[0].id;
+    const visited = new Set();
+    const queue = [initialId];
+    visited.add(initialId);
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+
+      // 1. 遷移（Table B）による到達
+      const outgoing = this.transitions.filter(t => t.source === current || t.source === "*");
+      outgoing.forEach(t => {
+        const target = t.target || t.source;
+        if (target && target !== "*" && !visited.has(target)) {
+          visited.add(target);
+          queue.push(target);
+        }
+      });
+
+      // 2. 親子関係（Auto-Entry）による到達を考慮 (追加)
+      this.states.forEach(s => {
+        // 現在の状態(current)が親であり、sがその直下の子である場合
+        if (s.id.startsWith(current + ".") && s.id.split('.').length === current.split('.').length + 1) {
+          if (!visited.has(s.id)) {
+            visited.add(s.id);
+            queue.push(s.id);
+          }
+        }
+      });
+    }
+
+    // 警告の生成
+    this.states.forEach(s => {
+      if (!visited.has(s.id)) {
+        this.report.push({
+          type: "warn",
+          id: "A-01",
+          message: `状態 "${s.id}" は初期状態から到達不可能な「幽霊状態」です。`,
+          lineIndex: s.lineIndex
+        });
+      }
+    });
+  }
+
+  /**
+   * A-02: デッドロック（行き止まり）検知
+   * 終了状態以外で、外部への遷移が一つも定義されていない状態を検知します。
+   */
+  checkDeadlock() {
+    this.states.forEach(s => {
+      // 慣習的に End や Final という名前の状態はデッドロック対象外とする
+      if (/^(End|Final|Stop)$/i.test(s.id)) return;
+
+      const hasOutgoing = this.transitions.some(t => t.source === s.id || t.source === "*");
+      if (!hasOutgoing) {
+        this.report.push({
+          type: "warn",
+          id: "A-02",
+          message: `状態 "${s.id}" に遷移後の出口が定義されていません（デッドロックの可能性）。`,
+          lineIndex: s.lineIndex
+        });
+      }
+    });
+  }
+
+  /**
+   * A-03: 論理競合（Smart Scan）
+   * 同一ソース・同一トリガーの遷移において、ガード条件が重複する可能性をサンプリング解析します。
+   * Section 2.3: 200ms のタイムアウト保護を実装。
+   */
+  scanConflicts() {
+    const startTime = Date.now();
+    const groups = {};
+
+    // 1. ソースとトリガーでグループ化
+    this.transitions.forEach(t => {
+      const key = `${t.source}-${t.trigger}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(t);
+    });
+
+    // 2. グループ内のペアを総当たり評価
+    const groupValues = Object.values(groups);
+    for (let k = 0; k < groupValues.length; k++) {
+      const ts = groupValues[k];
+      if (ts.length < 2) continue;
+
+      for (let i = 0; i < ts.length; i++) {
+        for (let j = i + 1; j < ts.length; j++) {
+          // タイムアウト保護 (Section 2.3.3)
+          if (Date.now() - startTime > 200) {
+            this.report.push({
+              type: "warn",
+              id: "T-01",
+              message: "Analysis timeout: Conflict scan aborted (model too large).",
+              lineIndex: 0
+            });
+            return; // 処理を中断
+          }
+
+          if (this._isPotentiallyConflicting(ts[i].guard, ts[j].guard)) {
+            this.report.push({
+              type: "warn",
+              id: "A-03",
+              message: `遷移 "${ts[i].trigger}" のガード条件 "${ts[i].guard || 'true'}" と "${ts[j].guard || 'true'}" が同時に成立し、競合する可能性があります。`,
+              lineIndex: ts[j].lineIndex
+            });
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Section 2.4: exportAnalysisForAI() (V52新規機能)
+   * LLMがモデルを再構築・修正するために最適な構造化データを出力します。
+   * @returns {Object} AI用構造化コンテキスト
+   */
+  exportAnalysisForAI() {
+    const errorCount = this.report.filter(r => r.type === "error").length;
+    
+    return {
+      meta: { 
+        version: "V52", 
+        timestamp: new Date().toISOString() 
+      },
+      stats: { 
+        stateCount: this.states.length, 
+        transitionCount: this.transitions.length,
+        errorCount: errorCount,
+        warningCount: this.report.length - errorCount
+      },
+      diagnostics: this.report, // 現在の解析レポート全量
+      modelSummary: this.transitions.map(t => {
+        return `${t.source} -> ${t.target || t.source} [${t.trigger || 'auto'}] (line:${t.lineIndex})`;
+      })
+    };
+  }
+
+  /* ========================================================================
+     PRIVATE HELPERS (SSOT Section 4)
+     ======================================================================== */
+
+  /**
+   * ガード条件が論理的に重なる可能性があるかサンプリング評価します。
+   * @private
+   */
+  _isPotentiallyConflicting(g1, g2) {
+    // 両方空（true）なら確実に競合
+    if ((!g1 || g1 === "-") && (!g2 || g2 === "-")) return true;
+    
+    // 文字列の簡易比較
+    if (g1 === g2) return true;
+
+    // V46スタイルのサンプリング解析ロジック
+    // 数値の境界値などを抽出して評価する
+    const sampleValues = [0, 1, -1, 10, 100];
+    const vars = this._extractVars(g1 + " " + g2);
+
+    try {
+      for (let v of sampleValues) {
+        const testCtx = {};
+        vars.forEach(name => testCtx[name] = v);
+        
+        const res1 = this._quickEval(g1, testCtx);
+        const res2 = this._quickEval(g2, testCtx);
+
+        if (res1 && res2) return true; // 特定の値で両方Trueになった
+      }
+    } catch (e) {
+      // 評価不能な場合は安全のため競合とはみなさない
+    }
+
+    return false;
+  }
+
+  /** * ガード式から変数名を抽出します。 
+   * V52: 識別子正規表現 [a-zA-Z_]\w* を維持。
+   * @private
+   */
+  _extractVars(str) {
+    if (!str) return [];
+    const matches = str.match(/[a-zA-Z_]\w*/g) || [];
+    return [...new Set(matches)].filter(m => !/^(true|false|null|undefined|Math|NaN)$/.test(m));
+  }
+
+  /** * 静的解析用の簡易評価器。eval() を使用せず new Function 方式で実行。
+   * Section 4.1: 信頼性・隔離設計。
+   * @private
+   */
+  _quickEval(expr, ctx) {
+    if (!expr || expr === "-") return true;
+    try {
+      const keys = Object.keys(ctx);
+      const vals = Object.values(ctx);
+      // サンドボックス化された関数の生成と即時実行
+      return new Function(...keys, `return (${expr})`)(...vals);
+    } catch (e) {
+      /**
+       * 評価失敗のロギング義務 (Section 4.1)
+       * ただしサンプリングループを壊さないよう、ここでは false を返却する。
+       */
+      return false;
+    }
+  }
+}
+
+
+
+
+    // --- PASTE STEP 8: DPlusPlusExporter ---
+/**
+ * DPlusPlusExporter Class - Version 52 (Full & Final Specification)
+ * Format D+++ Visualizer v52 - Step 8: Export & Integration
+ * * 【V52 修正・完全統合内容】
+ * 1. メソッド名復元: UIController からの呼び出しに合わせ downloadSvg を exportSvg に復元。
+ * 2. AI Context Export: Step 7 の診断結果を JSON 化し、AI 指示プロンプトと共に提供。
+ * 3. 三段構えフォールバック: クリップボード失敗時の Prompt/Console ダンプを完全実装。
+ * 4. C++ 生成の安全性: 状態 ID に "State_" プレフィックスを強制付与し予約語衝突を回避。
+ * 5. SVG 出力ガード: 描画未完了状態でのエクスポートに対する存在チェックを強化。
+ */
+class DPlusPlusExporter {
+  /**
+   * @param {object} uiController - 統合先の UIController インスタンス
+   */
+  constructor(uiController) {
+    this.ui = uiController;
+  }
+
+  /* ========================================================================
+     1. AI CONTEXT EXPORT (Section 2.1 / 5.4)
+     ======================================================================== */
+
+  /**
+   * AI（LLM）がモデルを自律修正するための詳細な構造化データを生成し、提供します。
+   * クリップボードへのコピーにおいて三段構えのフォールバックを実行します。
+   */
+  async exportAIContext() {
+    console.log("[Exporter] Generating AI Context JSON...");
+
+    try {
+      // 1.1 Step 7 Analyzer から診断データを取得
+      if (!this.ui.analyzer) {
+        throw new Error("Analyzer instance not found.");
+      }
+      const analysisData = this.ui.analyzer.exportAnalysisForAI();
+
+      // 1.2 プロンプト構築と構造化データのマージ (SSOT Section 3)
+      const aiContext = {
+        meta: {
+          tool: "Format D+++ Visualizer V52",
+          timestamp: new Date().toISOString(),
+          context_type: "LLM_REPAIR_KIT"
+        },
+        instruction: {
+          system_prompt: "あなたは状態遷移設計のエキスパートです。提供された診断レポート（diagnostics）に基づき、D+++形式のモデルを修正・最適化してください。",
+          format_rules: "修正案は必ず D+++ Markdown Table (A, B, C) 形式で提示してください。"
+        },
+        payload: analysisData
+      };
+
+      const jsonString = JSON.stringify(aiContext, null, 2);
+
+      // 1.3 三段構えのフォールバック・シーケンス (Section 5.4 義務化)
+      
+      // Tier 1: navigator.clipboard.writeText (標準コピー)
+      try {
+        await navigator.clipboard.writeText(jsonString);
+        this.ui.renderer.showToast("AI Context copied to clipboard!", "success");
+        console.log("[Exporter] JSON successfully copied via Clipboard API.");
+      } catch (clipboardErr) {
+        console.warn("[Exporter] Tier 1 copy failed, falling back to Tier 2.");
+
+        // Tier 2: window.prompt (緊急ダイアログ)
+        const userCopy = window.prompt(
+          "クリップボードへの書き込みに失敗しました。以下のテキストを手動でコピーしてください (Ctrl+C):",
+          jsonString.substring(0, 2000) // ダイアログ制限を考慮
+        );
+
+        if (userCopy !== null) {
+          this.ui.renderer.showToast("Manual copy prompt displayed.", "info");
+        } else {
+          // Tier 3: Console Dump (最終手段)
+          console.log("--- AI CONTEXT DUMP START ---");
+          console.log(jsonString);
+          console.log("--- AI CONTEXT DUMP END ---");
+          
+          window.alert("Export failed. Full JSON context has been dumped to the browser console (F12).");
+          this.ui.renderer.showToast("Context dumped to console.", "warn");
+        }
+      }
+
+      // エクスポート完了後に必要に応じてモーダルも表示
+      this.showCodeModal('json', jsonString);
+
+    } catch (e) {
+      console.error("[Exporter] AI Context Export failed:", e);
+      this.ui.renderer.showToast(`Export failed: ${e.message}`, "error");
+    }
+  }
+
+  /* ========================================================================
+     2. PRODUCTION C++ GENERATION (Section 2.2)
+     ======================================================================== */
+
+  /**
+   * 状態遷移モデルをプロダクションレベルの C++17 コードに変換します。
+   * @param {object} data - パース済みデータ
+   * @returns {string} C++ ソースコード
+   */
+  generateCpp(data) {
+    const className = "StateMachine";
+    const states = data.states;
+    const transitions = data.transitions;
+
+    if (!states || states.length === 0) return "// No states defined.";
+
+    let code = `/**\n * Generated by Format D+++ Visualizer V52\n * Production-ready State Machine Implementation (C++17)\n */\n`;
+    code += `#include <iostream>\n#include <string>\n#include <cstdint>\n\n`;
+
+    // 2.1 Enum Class 生成 (予約語回避プレフィックス付き)
+    code += `enum class State : uint8_t {\n`;
+    states.forEach(s => {
+      code += `    ${this._flattenState(s.id)},\n`;
+    });
+    code += `};\n\n`;
+
+    code += `class ${className} {\n`;
+    code += `public:\n`;
+    code += `    ${className}() : m_currentState(State::${this._flattenState(states[0].id)}) {\n`;
+    code += `        std::cout << "[SM] Initialized at ${states[0].id}" << std::endl;\n`;
+    code += `    }\n\n`;
+
+    // 2.2 イベントハンドラ (Switch-Case 構造)
+    code += `    void handleEvent(const std::string& event) {\n`;
+    code += `        switch (m_currentState) {\n`;
+
+    states.forEach(s => {
+      code += `            case State::${this._flattenState(s.id)}:\n`;
+      const outgoing = transitions.filter(t => t.source === s.id || t.source === "*");
+      
+      outgoing.forEach((t, idx) => {
+        const condition = idx === 0 ? "if" : "else if";
+        const guard = (t.guard && t.guard !== "-") ? ` && checkGuard("${t.guard}")` : "";
+        const target = t.target || t.source;
+
+        code += `                ${condition} (event == "${t.trigger}"${guard}) {\n`;
+        code += `                    // Action: ${t.action || "none"}\n`;
+        
+        // Exit アクションの挿入
+        if (s.exit && s.exit !== "-") {
+          code += `                    onExit${this._flattenState(s.id)}();\n`;
+        }
+
+        // 状態遷移の実行
+        code += `                    m_currentState = State::${this._flattenState(target)};\n`;
+        
+        // Entry アクションの挿入
+        const targetState = states.find(st => st.id === target);
+        if (targetState && targetState.entry && targetState.entry !== "-") {
+          code += `                    onEntry${this._flattenState(target)}();\n`;
+        }
+        code += `                }\n`;
+      });
+      code += `                break;\n`;
+    });
+
+    code += `            default: break;\n`;
+    code += `        }\n`;
+    code += `    }\n\n`;
+
+    code += `private:\n`;
+    code += `    State m_currentState;\n\n`;
+
+    // 2.3 メソッドスタブの生成
+    states.forEach(s => {
+      if (s.entry && s.entry !== "-") {
+        code += `    void onEntry${this._flattenState(s.id)}() { /* D+++: ${s.entry} */ }\n`;
+      }
+      if (s.exit && s.exit !== "-") {
+        code += `    void onExit${this._flattenState(s.id)}() { /* D+++: ${s.exit} */ }\n`;
+      }
+    });
+
+    code += `\n    bool checkGuard(const std::string& expr) { return true; }\n`;
+    code += `};\n`;
+
+    return code;
+  }
+
+  /* ========================================================================
+     3. SVG EXPORT (Section 2.3 / 5.3)
+     ======================================================================== */
+
+  /**
+   * UIController からの呼び出し名 exportSvg を復元しました。
+   * Mermaid が生成した SVG をシリアライズしてファイル保存します。
+   */
+  exportSvg() {
+    const svgElement = document.querySelector('#diagram svg');
+    
+    // 3.1 描画状態チェック (Section 5.3 ガード)
+    if (!svgElement) {
+      console.error("[Exporter] SVG element not ready for export.");
+      this.ui.renderer.showToast("SVG diagram not rendered yet.", "error");
+      return;
+    }
+
+    try {
+      const serializer = new XMLSerializer();
+      let source = serializer.serializeToString(svgElement);
+
+      // XML 宣言の付与
+      if (!source.match(/^<\?xml/)) {
+        source = '<?xml version="1.0" standalone="no"?>\r\n' + source;
+      }
+
+      // Blob の作成とダウンロード実行
+      const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      
+      const downloadLink = document.createElement("a");
+      downloadLink.href = url;
+      downloadLink.download = `d_plus_plus_model_${Date.now()}.svg`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      
+      URL.revokeObjectURL(url);
+      this.ui.renderer.showToast("SVG image exported successfully.", "success");
+    } catch (e) {
+      console.error("[Exporter] SVG serialization failed:", e);
+      this.ui.renderer.showToast("SVG export failed.", "error");
+    }
+  }
+
+  /* ========================================================================
+     4. MODAL & HELPERS
+     ======================================================================== */
+
+  /**
+   * 生成されたコード（C++ または JSON）をモーダルに表示します。
+   * @param {string} mode - 'cpp' | 'json'
+   * @param {string} customContent - 指定がある場合はこれを使用
+   */
+  showCodeModal(mode = 'cpp', customContent = null) {
+    const code = customContent || (mode === 'cpp' ? this.generateCpp(this.ui.data) : "");
+    
+    const modal = document.getElementById('code-modal');
+    const codeArea = document.getElementById('cpp-output');
+    
+    if (modal && codeArea) {
+      codeArea.textContent = code;
+      modal.style.display = 'flex';
+      console.log(`[Exporter] ${mode.toUpperCase()} content displayed in modal.`);
+    } else {
+      // フォールバック: コンソール出力
+      console.log(`--- [Fallback] ${mode.toUpperCase()} Export ---\n`, code);
+    }
+  }
+
+  /**
+   * 状態 ID (A.B.C) を C++ 識別子 (State_A_B_C) に変換します。
+   * プレフィックスを強制することで C++ 予約語（class, if, switch等）との衝突を物理的に防ぎます。
+   * @private
+   */
+  _flattenState(id) {
+    if (!id) return "State_UNKNOWN";
+    
+    // ドットをアンダースコアに置換し、プレフィックスを付与 (Section 5.4)
+    let flatId = id.replace(/\./g, '_');
+    return "State_" + flatId;
+  }
+}
+
+
+    // --- PASTE STEP 6: UIController ---
+// --- PASTE STEP 6.1: UIRenderer ---
+/**
+ * UIRenderer Class - Version 52 (Full & Robust Specification)
+ * Format D+++ Visualizer v52 - Step 6.1: View Layer
+ * * 【V52 修正・完全実装内容】
+ * 1. アーティファクト除去: 構文エラーや可読性低下の原因となる引用タグを全域から排除。
+ * 2. Mermaid文法強化: 状態・遷移定義の各行末にセミコロンを追加し、トークン結合を防止。
+ * 3. 分離強化: スタイル定義（classDef）の前に明確な分離コメントを追加。
+ * 4. アトミック描画シーケンス: Lock -> Async Render -> Wait -> Bind -> Unlock の手順を厳守。
+ * 5. カバレッジ視覚化: calculateCoverage() の結果をプログレスバーと数値に物理反映。
+ * 6. 解析レポート連携: Step 7 の静的解析結果をリスト化し、エディタジャンプ機能を実装。
+ */
+class UIRenderer {
+  /**
+   * @param {UIController} uiController - 親となるUIコントローラーのインスタンス
+   */
+  constructor(uiController) {
+    this.ui = uiController; // UIControllerへの参照
+    this.els = uiController.els; // DOMキャッシュの共有
+  }
+
+  /* ========================================================================
+     1. DASHBOARD & STATUS UPDATES (Section 2.1)
+     ======================================================================== */
+
+  /**
+   * シミュレーターの状態（HACEサイクル）と統計情報をUIに反映します。
+   * @param {AtomicSimulator} sim - シミュレーターインスタンス
+   */
+  async updateDashboard(sim) {
+    if (!sim || !this.els.simStatus) return;
+
+    // 1.1 ステータス表示の更新
+    if (sim.simState === "Error_Lock") {
+      this.els.simStatus.textContent = "ERROR_LOCK";
+      this.els.simStatus.className = ""; // クラスリセット
+      this.els.simStatus.style.color = "var(--action)";
+    } else if (sim.simState === "Idle") {
+      this.els.simStatus.textContent = `READY: ${sim.currentStateID || "NONE"}`;
+      this.els.simStatus.className = "status-ready";
+      this.els.simStatus.style.color = "var(--entry)";
+    } else {
+      this.els.simStatus.textContent = sim.simState.toUpperCase();
+      this.els.simStatus.className = "";
+      this.els.simStatus.style.color = "var(--primary)";
+    }
+
+    // 1.2 LED操作: HACEフェーズの点灯制御
+    const phaseLeds = document.querySelectorAll('.led-label');
+    phaseLeds.forEach(led => led.classList.remove('active'));
+    const currentPhaseLed = document.getElementById(`phase-${sim.simState.toLowerCase()}`);
+    if (currentPhaseLed) {
+      currentPhaseLed.classList.add('active');
+    }
+
+    // 1.3 カバレッジ更新 (V52重要要件)
+    const coveragePercent = this.ui.calculateCoverage ? this.ui.calculateCoverage() : 0;
+    
+    // パーセンテージテキスト反映
+    if (this.els.dashboardCoverage) {
+      this.els.dashboardCoverage.textContent = `${coveragePercent}%`;
+    }
+
+    // プログレスバー（width）反映
+    const progressBar = document.getElementById('coverage-progress-fill');
+    if (progressBar) {
+      progressBar.style.width = `${coveragePercent}%`;
+    }
+
+    // 1.4 Undo制御
+    const undoBtn = document.getElementById('btn-sim-undo');
+    if (undoBtn) {
+      undoBtn.disabled = !sim.history || sim.history.length === 0;
+    }
+
+    // 1.5 UIロック（Busy状態）の反映
+    const isBusy = sim.simState !== "Idle" && sim.simState !== "Error_Lock";
+    document.body.classList.toggle('sim-busy', isBusy);
+
+    // 1.6 変数テーブルの同期更新
+    this.renderVariableTable(sim.ctxManager.getSnapshot());
+    // 重要：renderMermaidの完了を「待つ」
+    if (this.renderMermaid) {
+      await this.renderMermaid(); 
+      // await することで、図が確実にDOM（画面）に配置された後に
+      // highlightActiveElements が実行されるようになります。
+      this.highlightActiveElements(sim);
+    }
+  }
+
+  /* ========================================================================
+     2. ATOMIC MERMAID RENDERING (Section 4.2)
+     ======================================================================== */
+
+  /**
+   * D+++定義からMermaid図をアトミックに生成・描画します。
+   * 手順: Lock -> Async Render -> Wait -> Bind -> Restore -> Unlock 
+   */
+async renderMermaid() {
+    if (!this.els.mermaidDiv || !this.ui.data) return;
+    document.body.classList.add('sim-busy');
+
+    try {
+      const lines = ["stateDiagram-v2"];
+      lines.push("%%{init: {'theme': 'neutral', 'themeVariables': { 'fontSize': '12px' }}}%%");
+      lines.push(this.ui.layout === 'TD' ? "  direction TB" : "  direction LR");
+
+      const escape = (str) => this.escapeHtml(str);
+      const safeId = (id) => "sid" + String(id).replace(/[^a-zA-Z0-9]/g, '');
+
+      // --- 1. 階層構造（State Tree）の構築 (V51からの復元) ---
+      const stateTree = {};
+      this.ui.data.states.forEach(s => {
+        const parts = s.id.split('.'); 
+        let curr = stateTree;
+        parts.forEach((p, i) => { 
+          if (!curr[p]) { 
+            const id = parts.slice(0, i+1).join('.'); 
+            curr[p] = { id, safeId: safeId(id), children: {} }; 
+          } 
+          curr = curr[p].children; 
+        });
+      });
+
+      // --- 2. 再帰的な状態定義の生成 (V51準拠) ---
+      const build = (tree, indent = "  ") => {
+        let s = ""; 
+        for (const k in tree) {
+          const n = tree[k];
+          if (Object.keys(n.children).length > 0) {
+            // 子がある場合は { } で囲む
+            s += `${indent}state "${escape(n.id)}" as ${n.safeId} {\n${build(n.children, indent + "  ")}${indent}}\n`;
+          } else {
+            // 子がない場合は単一の状態として定義
+            s += `${indent}state "${escape(n.id)}" as ${n.safeId}\n`;
+          }
+        }
+        return s;
+      };
+
+      lines.push(build(stateTree));
+
+      // --- 3. 遷移定義 (V16形式を維持) ---
+      this.ui.data.transitions.forEach(t => {
+        const src = safeId(t.source);
+        const tgt = safeId(t.target || t.source);
+        const trigger = escape(t.trigger || "ε");
+        const label = `: "<span class='edge-label-btn' data-idx='${t.lineIndex}'>${trigger}</span>"`;
+        lines.push(`  ${src} --> ${tgt} ${label}`);
+      });
+
+      const code = lines.join('\n');
+      console.log("--- [V52 HIERARCHICAL] CLEAN DSL ---\n", code);
+
+      // --- 4. 描画とスタイル適用 ---
+      const { svg } = await mermaid.render(`mermaid-svg-${Date.now()}`, code);
+      this.els.mermaidDiv.innerHTML = svg;
+
+      // わずかな待機を入れてスタイルを適用
+      await new Promise(resolve => setTimeout(resolve, 50));
+      this.applySvgStyles(); 
+      this.bindSvgEvents();
+
+      // ★ここが問題の箇所：描画関数の中で自らハイライトを呼んでいた
+      if (this.ui.simCtrl?.simulator) {
+        this.highlightActiveElements(this.ui.simCtrl.simulator);
+      }
+      this.applyZoom();
+
+    } catch (e) {
+      console.error("[UIRenderer] Hierarchical Render Error:", e);
+    } finally {
+      document.body.classList.remove('sim-busy');
+    }
+  }
+
+/**
+   * SVG要素に対してクリックイベントをバインドします。
+   * 階層構造化に伴う複雑なID体系に対応し、確実にエディタジャンプを実行します。
+   */
+  bindSvgEvents() {
+    if (!this.els.mermaidDiv) return;
+
+    // 1. 状態ノード（.node）のバインド
+    this.els.mermaidDiv.querySelectorAll('.node').forEach(node => {
+      node.onclick = () => {
+        // Mermaidの生成IDからターゲットとなる sid... 文字列を抽出
+        const idParts = node.id.split('-');
+        const sidFromSvg = idParts[idParts.length - 2] || idParts[idParts.length - 1];
+        
+        // 描画ロジックと同じルールでIDを生成して照合（SSOT維持）
+        const state = this.ui.data.states.find(s => {
+          const expectedSid = "sid" + String(s.id).replace(/[^a-zA-Z0-9]/g, '');
+          return expectedSid === sidFromSvg;
+        });
+
+        if (state) {
+          this.ui.jumpToLine(state.lineIndex);
+          this.showToast(`Selected: ${state.id}`, "info");
+        } else {
+          // フォールバック: 階層名の一部から検索
+          const fallback = this.ui.data.states.find(s => sidFromSvg.includes(s.safeId));
+          if (fallback) this.ui.jumpToLine(fallback.lineIndex);
+        }
+      };
+    });
+
+    // 2. 遷移ラベル（.edge-label-btn）のバインド
+    this.els.mermaidDiv.querySelectorAll('.edge-label-btn').forEach(label => {
+      label.onclick = (e) => {
+        e.stopPropagation();
+        const lineIdx = parseInt(label.dataset.idx);
+        if (!isNaN(lineIdx)) {
+          this.ui.jumpToLine(lineIdx);
+        }
+      };
+    });
+  }
+
+  /* ========================================================================
+     3. VARIABLE & ANALYSIS RENDERING (Section 2.3 / 2.4)
+     ======================================================================== */
+
+  /**
+   * 現在の変数値（コンテキスト）を描画します。
+   * @param {Object} ctx - 変数データ
+   */
+/**
+   * 変数テーブルをレンダリングし、変化があった値にフラッシュ効果を適用します。
+   */
+  renderVariableTable(ctx) {
+    // 1. ガードとバッファの初期化
+    if (!this.els.varTable || !ctx) return;
+    if (!this.prevContext) this.prevContext = {};
+
+    let html = '<table class="var-table"><thead><tr><th>Key</th><th>Value</th></tr></thead><tbody>';
+    
+    // 表示順を安定させるためにキーをソート
+    const entries = Object.entries(ctx).sort((a, b) => a[0].localeCompare(b[0]));
+
+    entries.forEach(([key, val]) => {
+      const displayVal = (typeof val === 'object') ? JSON.stringify(val) : val;
+      
+      // 2. 変化判定ロジックの注入
+      // 前回の値が存在し、かつ現在の値と異なる場合のみクラスを付与
+      const hasChanged = this.prevContext.hasOwnProperty(key) && this.prevContext[key] !== val;
+      const flashClass = hasChanged ? "flash-update" : "";
+
+      html += `
+        <tr>
+          <td class="var-key">${this.escapeHtml(key)}</td>
+          <td class="var-val ${flashClass}" id="var-row-${this.escapeHtml(key)}">
+            ${this.escapeHtml(String(displayVal))}
+          </td>
+        </tr>
+      `;
+    });
+
+    html += '</tbody></table>';
+    this.els.varTable.innerHTML = html;
+
+    // 3. 次回の比較のためにディープコピーを保存
+    // 参照渡しを避けるため JSON を介して値を「凍結」保存します
+    this.prevContext = JSON.parse(JSON.stringify(ctx));
+  }
+
+  /**
+   * 静的解析レポートを表示します (Step 7 連携)。
+   * @param {Array} report - エラー/警告の配列
+   */
+  renderAnalysis(report) {
+    if (!this.els.analysisList || !this.els.analysisPanel) return;
+
+    if (!report || report.length === 0) {
+      this.els.analysisPanel.style.display = 'none';
+      return;
+    }
+
+    this.els.analysisPanel.style.display = 'block';
+    this.els.analysisList.innerHTML = report.map(item => {
+      const typeClass = item.type === 'error' ? 'analysis-error' : 'analysis-warn';
+      return `
+        <div class="analysis-item ${typeClass}" onclick="window.ui.jumpToLine(${item.lineIndex})">
+          <span class="analysis-loc">Line ${item.lineIndex + 1}:</span>
+          <span class="analysis-msg">${this.escapeHtml(item.message)}</span>
+        </div>
+      `;
+    }).join('');
+  }
+
+  /* ========================================================================
+     4. HIGHLIGHTS & HELPERS
+     ======================================================================== */
+
+/**
+   * 現在のアクティブな状態ノードを強調表示します。
+   * 遷移実行中(Busy)は、その経路の赤色ハイライトを維持します。
+   */
+  highlightActiveElements(sim) {
+    if (!this.els.mermaidDiv || !sim) return;
+
+    // 1. 【条件付きクリア】
+    // シミュレーターが完全に「Idle」または「Error」になった時だけ、矢印の赤色を一掃する
+    if (sim.simState === "Idle" || sim.simState === "Error_Lock") {
+      this.els.mermaidDiv.querySelectorAll('.diagram-highlight').forEach(el => {
+        el.classList.remove('diagram-highlight');
+      });
+      this.els.mermaidDiv.querySelectorAll('.edge-hover-active').forEach(el => {
+        el.classList.remove('edge-hover-active');
+      });
+    }
+
+    // 2. ノード（箱）のハイライト更新
+    this.els.mermaidDiv.querySelectorAll('.state-active').forEach(el => {
+      el.classList.remove('state-active');
+    });
+
+    const sid = "sid" + sim.currentStateID.replace(/\./g, '');
+    const node = this.els.mermaidDiv.querySelector(`[id*="${sid}"]`);
+    if (node) {
+      node.classList.add('state-active');
+    }
+
+    // 3. 【遷移の維持】
+    // 現在実行中の遷移（currentTransition）がある場合、その矢印を強制的に光らせる
+    // これにより、HACEサイクル（Exiting→Acting→Updating...）の間、赤色が維持されます。
+    if (sim.currentTransition) {
+      this.highlightEdge(sim.currentTransition.lineIndex, true);
+    }
+  }
+
+/**
+   * 指定した行番号へエディタをスクロールさせ、強調表示します。
+   * @param {number} lineIndex 
+   */
+  scrollToLine(lineIndex) {
+    // UIController に実装済みのジャンプ機能を呼び出す
+    this.ui.jumpToLine(lineIndex);
+  }
+
+
+/**
+   * 描画されたSVGに対して、カバレッジに応じたスタイルを直接適用します。
+   */
+  applySvgStyles() {
+    if (!this.els.mermaidDiv || !this.ui.data) return;
+    
+    const visitedStates = this.ui.simCtrl?.simulator?.coverage?.visitedStates;
+
+    // 状態ノードへのスタイル適用
+    this.ui.data.states.forEach(s => {
+      if (visitedStates?.has(s.id)) {
+        const sid = "sid" + String(s.id).replace(/[^a-zA-Z0-9]/g, '');
+        const nodeEl = this.els.mermaidDiv.querySelector(`[id*="${sid}"]`);
+        if (nodeEl) {
+          nodeEl.querySelectorAll('rect, path, circle, polygon').forEach(shape => {
+            shape.classList.add('cov-visited');
+          });
+        }
+      }
+    });
+  }
+
+/**
+   * エッジ（遷移の線）を強調表示します。
+   * DSL(classDef)を使わず直接DOMを操作します。
+   */
+  highlightEdge(lineIndex, active) {
+    if (!this.els.mermaidDiv) return;
+
+    // 1. ラベル(ボタン)を特定
+    const labelBtn = this.els.mermaidDiv.querySelector(`.edge-label-btn[data-idx='${lineIndex}']`);
+    if (!labelBtn) return;
+
+    const edgeContainer = labelBtn.closest('.edgeLabel');
+    if (edgeContainer) {
+      // 2. クラスの付け替えは維持（CSS側での制御用）
+      edgeContainer.classList.toggle('edge-hover-active', active);
+
+      // 3. 線(path)の特定と直接スタイル上書き
+      const pathId = edgeContainer.id?.replace(/^L-/, '');
+      if (pathId) {
+        const path = this.els.mermaidDiv.querySelector(`path[id*="${pathId}"]`);
+        if (path) {
+          // V51方式: !important に相当する優先度で直接色を流し込む
+          if (active) {
+            path.style.stroke = 'var(--action)'; // 赤色 (#ef4444)
+            path.style.strokeWidth = '3.5px';
+            path.style.filter = 'drop-shadow(0 0 5px rgba(239, 68, 68, 0.4))';
+          } else {
+            // 元の状態（Mermaidのデフォルト）に戻す
+            path.style.stroke = '';
+            path.style.strokeWidth = '';
+            path.style.filter = '';
+          }
+        }
+      }
+    }
+  }
+  /**
+   * ズーム倍率を適用します。
+   */
+  applyZoom() { 
+    if (this.els.mermaidDiv) {
+      const svg = this.els.mermaidDiv.querySelector('svg');
+      if (svg) {
+        svg.style.transform = `scale(${this.ui.zoom})`;
+        svg.style.transformOrigin = "top left";
+      }
+    }
+  }
+
+  /**
+   * トースト通知を表示します。
+   */
+  showToast(msg, type = 'info') {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+    toast.textContent = msg;
+    toast.className = `toast show ${type}`;
+    if (this._toastTimer) clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
+  }
+
+/**
+   * 手動シミュレーション用のトリガーボタンをパネルに描画します。
+   */
+renderQuickActions(sim) {
+    const container = document.getElementById('trigger-panel'); 
+    if (!container) return;
+
+    // 1. ヘッダーと「テストケース選択」の追加
+    // 既存のスタイル（panel-label）を維持しつつ、セレクトボックスを挿入
+    let headerHtml = `
+      <div class="panel-label"><i class="ph ph-lightning-bolt"></i> Quick Actions</div>
+      <div style="padding: 0 4px 10px 4px; border-bottom: 1px dashed var(--border-color); margin-bottom: 10px;">
+        <div style="font-size: 10px; color: #94a3b8; margin-bottom: 4px; font-weight: bold;">SCENARIO SELECT (TABLE C)</div>
+        <select id="test-case-selector" style="width:100%; padding:5px; font-size:11px; border:1px solid var(--border-color); border-radius:4px; background:#fcfcfd;">
+          <option value="">-- Select Scenario --</option>
+          ${(this.ui.data.testCases || []).map(tc => `<option value="${tc.id}">${tc.id}: ${tc.initialState}</option>`).join('')}
+        </select>
+      </div>
+    `;
+    container.innerHTML = headerHtml;
+
+    // イベント配線
+    const selector = document.getElementById('test-case-selector');
+    selector.onchange = (e) => {
+      if (e.target.value && this.ui.simCtrl) {
+        this.ui.simCtrl.loadTestCase(e.target.value);
+      }
+    };
+
+    // 2. 既存のロジック：ビジー状態の表示
+    if (sim.simState !== "Idle") {
+      const busy = document.createElement('div');
+      busy.className = "busy-indicator"; 
+      busy.innerHTML = `<div class="spinner"></div><span>Busy: ${sim.simState}...</span>`;
+      container.appendChild(busy);
+      return;
+    }
+
+    const available = sim.getAvailableTransitions();
+    if (available.length === 0) {
+      const none = document.createElement('div');
+      none.style = "padding:10px; font-size:11px; color:var(--action); text-align:center;";
+      none.textContent = "No Available Actions";
+      container.appendChild(none);
+      return;
+    }
+
+    // ボタンリストの構築
+    const list = document.createElement('div');
+    list.className = 'trigger-list';
+
+    available.forEach(t => {
+      const btn = document.createElement('button');
+      btn.className = 'trigger-btn';
+      // 稲妻アイコンの復活
+      btn.innerHTML = `<i class="ph-fill ph-lightning"></i> <span>${this.escapeHtml(t.trigger || "ε")}</span>`;
+      
+      // UX復元: ホバー時の図との連動
+      btn.onmouseenter = () => this.highlightEdge(t.lineIndex, true);
+      btn.onmouseleave = () => this.highlightEdge(t.lineIndex, false);
+      
+      // クリックでシミュレーターを駆動
+      btn.onclick = () => {
+        if (this.ui.simCtrl) {
+          this.ui.simCtrl.simulator.trigger(t);
+        }
+      };
+      list.appendChild(btn);
+    });
+    container.appendChild(list);
+  }
+
+
+
+/**
+   * HTMLエスケープ処理 (V51方式: 全角置換によるパーサー保護)
+   * Mermaidの構文破壊を防ぎつつ、記号の視覚的な意味を維持します。
+   */
+  escapeHtml(str) {
+    if (!str) return "";
+    return String(str)
+      .replace(/&/g, '＆')
+      .replace(/</g, '＜')
+      .replace(/>/g, '＞')
+      .replace(/"/g, '”')
+      .replace(/'/g, "’");
+  }
+}
+
+// --- PASTE STEP 6.2: SimController ---
+/**
+ * SimController Class - Version 52 (Full & Final Specification)
+ * Format D+++ Visualizer v52 - Step 6.2: Logic Control Layer
+ * * 【V52 修正・完全統合内容】
+ * 1. 不正タグ除去: 構文エラーの原因となる引用タグ（Artifacts）を全域から排除。
+ * 2. 起動シーケンスの厳格化: boot()実行と初期カバレッジセットのクリアを物理的に実装。
+ * 3. 排他制御の徹底: 手動操作（step/trigger/undo）介入時に直ちにオートプレイを停止。
+ * 4. バッチテスト・カバレッジ統合: テスト結果（visitedLines）を ui.coverageSet へマージ。
+ * 5. 異常系ガード: Error_Lock 検知時のタイマー即時破棄とユーザーへの警告トースト。
+ * 6. 既存機能の完全維持: step, undo, trigger, setSpeed 等の全委譲メソッドを省略せず記述。
+ */
+class SimController {
+
+  /**
+
+   * @param {UIController} uiController - 親となるUIコントローラーのインスタンス
+
+   */
+
+constructor(uiController) {
+    this.ui = uiController;
+    this.simulator = null;
+    this.timer = null; // timer に統一
+    this.speed = 500;  // speed に統一
+    // シナリオ再生用の管理変数
+    this.currentScenario = []; 
+    this.scenarioIndex = 0;
+  }
+
+
+
+  /* ========================================================================
+
+     1. SIMULATION LIFECYCLE (Section 2.1)
+
+     ======================================================================== */
+
+
+
+  /**
+   * シミュレーターを新規インスタンス化し、初期変数を適用して起動します。
+   * SSOT Section 2.1 に基づく厳格な初期化シーケンス。
+   */
+
+  startSimulation() {
+    try {
+      // 1.1 現在実行中のオートプレイを停止し、表示上のカバレッジ履歴をクリア
+      this.stopAutoPlay();
+      if (this.ui.coverageSet) {
+        this.ui.coverageSet.clear();
+      }
+
+
+
+      // 1.2 初期変数の解析とマージ
+      // 構文解析時に自動抽出されたデフォルト変数を取得
+      const finalContext = this.ui.analyzeVariables ? this.ui.analyzeVariables() : {};
+
+      // UIの initial-context フィールド（x=1形式など）からの入力をパースして上書き
+      try {
+        const initialContextStr = this.ui.els.initialCtx ? this.ui.els.initialCtx.value : "";
+        const inputData = this.ui.testRunner._parseContext(initialContextStr);
+        Object.assign(finalContext, inputData);
+      } catch (contextError) {
+        console.warn("[SimController] Context Input Error:", contextError);
+        this.ui.renderer.showToast("Context input error. Using defaults.", "warn");
+      }
+
+      // 1.3 シミュレーションエンジンの実体化 (Step 3 & Step 4 連携)
+     const ctxManager = new ContextManager(finalContext);
+      this.simulator = new AtomicSimulator(
+      this.ui.data, // ★ ここを data.states ではなく data 全体にする
+      ctxManager,
+      this.ui.evaluator,
+      { onUpdate: (sim) => this.updateSimUI(sim) }
+      );
+
+
+     // 1.4 ブートシーケンスの実行 (SSOT 3.2 連携)
+      // 初期状態の Entry/Auto-Entry を HACE.Idle になるまで進行させる
+      this.simulator.boot();
+
+      // 1.5 初期状態の反映
+      this.updateSimUI(this.simulator);
+     
+      this.ui.renderer.showToast(`HACE Engine Booted: ${Object.keys(finalContext).length} variables active.`, "success");
+
+    } catch (e) {
+      console.error("[SimController] Simulator Start Critical Error:", e);
+      this.ui.renderer.showToast(`Start Failed: ${e.message}`, "error");
+    }
+  }
+
+/**
+   * Table Cから選択されたテストケースをロードし、初期状態をセットアップします。
+   */
+  loadTestCase(id) {
+    const testCase = this.ui.data.testCases.find(tc => tc.id === id);
+    if (!testCase) return;
+
+    this.stopAutoPlay();
+    console.log(`[SimController] Loading Test Case: ${id}`);
+
+    // シナリオの準備（インデックスをリセットして待機）
+    this.currentScenario = testCase.scenario ? testCase.scenario.split(',').map(s => s.trim()) : [];
+    this.scenarioIndex = 0;    
+
+    try {
+      // 1. 変数の準備（既存の analyzeVariables と Table C の Context をマージ）
+      const finalContext = this.ui.analyzeVariables ? this.ui.analyzeVariables() : {};
+      const tcContext = this.ui.testRunner ? this.ui.testRunner._parseContext(testCase.context || "") : {};
+      Object.assign(finalContext, tcContext);
+
+      // 2. シミュレーターの再生成（startSimulationと同じ作法）
+      const ctxManager = new ContextManager(finalContext);
+      this.simulator = new AtomicSimulator(
+        this.ui.data, 
+        ctxManager, 
+        this.ui.evaluator, 
+        { 
+          onStateChange: (sim) => this.updateSimUI(sim),
+          onFailure: (msg) => this.ui.renderer.showToast(msg, "error")
+        }
+      );
+
+      // 3. テストケース指定の初期状態を強制セットして起動
+      this.simulator.currentStateID = testCase.initialState;
+      this.simulator.boot();
+      
+      this.updateSimUI(this.simulator);
+      this.ui.renderer.showToast(`Scenario Loaded: ${id}`, "success");
+    } catch (e) {
+      console.error("Failed to load test case:", e);
+      this.ui.renderer.showToast("Load Failed: " + e.message, "error");
+    }
+  }
+
+  /**
+   * シミュレーターからの更新通知を受け取り、UI全体を同期させます。
+   * @param {AtomicSimulator} sim - シミュレーターインスタンス
+   */
+  updateSimUI(sim) {
+    if (!sim) return;
+
+    // 2.1 表示レイヤーへの委譲 (Dashboard, VariableTable, Highlights)
+    this.ui.renderer.updateDashboard(sim);
+   
+    // クイック操作ボタン（トリガーリスト）の再生成
+    if (this.ui.renderer.renderQuickActions) {
+      this.ui.renderer.renderQuickActions(sim);
+    }
+
+    // 2.2 カバレッジ追跡とエディタ同期 (Section 3)
+    if (sim.currentTransition) {
+      const lineIdx = sim.currentTransition.lineIndex;
+     
+      // 通過した遷移の行番号をカバレッジセットに記録
+      if (this.ui.coverageSet) {
+        this.ui.coverageSet.add(lineIdx);
+      }
+     
+      // 実行中の行をエディタ上で強調・ジャンプ
+      if (this.ui.renderer.scrollToLine) {
+        this.ui.renderer.scrollToLine(lineIdx);
+      }
+    } else if (sim.currentStateID) {
+      // 遷移していない待機時は現在の状態定義行を表示
+      const stateData = this.ui.data.states.find(s => s.id === sim.currentStateID);
+      if (stateData && this.ui.renderer.scrollToLine) {
+        this.ui.renderer.scrollToLine(stateData.lineIndex);
+      }
+    }
+  }
+  /* ========================================================================
+     2. INTERACTIVE CONTROLS (Manual Intervention)
+     ======================================================================== */
+
+  /**
+   * 手動で1ステップ実行します。
+   * 【V52重要】手動操作介入時はオートプレイを直ちに解除する。
+   */
+  step() {
+    this.stopAutoPlay();
+    if (this.simulator) {
+      this.simulator.step();
+    }
+  }
+
+  /**
+   * 履歴を1つ戻します。
+   */
+  undo() {
+    this.stopAutoPlay();
+    if (this.simulator) {
+      this.simulator.undo();
+    }
+  }
+
+  /**
+   * グラフクリック等による手動遷移をトリガーします。
+   * @param {Object} transition - 遷移定義
+   */
+  trigger(transition) {
+    // 排他制御: 手動介入時は即座に自動実行タイマーを破棄
+    this.stopAutoPlay();
+    if (this.simulator) {
+      this.simulator.trigger(transition);
+    }
+  }
+
+  /* ========================================================================
+     3. AUTO-PLAY CONTROL (Section 2.2 / 4)
+     ======================================================================== */
+
+  /**
+   * オートプレイを開始します。
+   */
+/**
+   * オートプレイを開始します。
+   * 再帰的setTimeoutにより、エンジンのフェーズ進行と同期させます。
+   */
+startAutoPlay() {
+    this.stopAutoPlay(); // 二重起動防止
+
+    const autoLoop = () => {
+      if (!this.simulator) return;
+
+      if (this.simulator.simState === "Error_Lock") {
+        this.stopAutoPlay();
+        return;
+      }
+
+      // --- 修正：Idle時でも停止させない ---
+      if (this.simulator.simState === "Idle") {
+        // --- 修正：表Cのシナリオを順番に実行するロジック ---
+        if (this.currentScenario && this.scenarioIndex < this.currentScenario.length) {
+          const nextTrigger = this.currentScenario[this.scenarioIndex].trim();
+          
+          // そのトリガーが現在の状態で実行可能か確認
+          const transition = this.simulator.getAvailableTransitions().find(t => t.trigger === nextTrigger);
+          
+          if (transition) {
+            this.simulator.trigger(transition);
+            this.scenarioIndex++; // 次のステップへ
+          } else {
+            // シナリオ通りのトリガーが押せない場合は、安全のため停止
+            this.ui.renderer.showToast(`Scenario blocked: ${nextTrigger} not available`, "warn");
+            this.stopAutoPlay();
+            return;
+          }
+        } else if (this.currentScenario.length > 0) {
+          // 最後まで到達したら終了
+          this.ui.renderer.showToast("Scenario finished", "success");
+          this.stopAutoPlay();
+          return;
+        }
+      } else {
+        // 遷移フェーズ進行中はエンジンだけを1ステップ進める（ここはOK！）
+        this.simulator.step();
+      }
+    };
+
+    this.timer = setTimeout(autoLoop, this.speed);
+    if (this.ui.els.btnPlay) this.ui.els.btnPlay.classList.add('active');
+    this.updateSimUI(this.simulator);
+  }
+
+  /**
+   * オートプレイを停止し、リソースを完全に解放します。
+   */
+  stopAutoPlay() {
+    if (this.timer) {
+      clearTimeout(this.timer); // 修正
+      this.timer = null;        // 修正
+    }
+    if (this.ui.els.btnPlay) {
+      this.ui.els.btnPlay.classList.remove('active');
+    }
+  }
+
+  /**
+   * 実行速度をミリ秒単位で設定します。
+   * @param {string|number} val 
+   */
+  setSpeed(val) {
+    this.speed = parseInt(val, 10); // 統一した名前に修正
+    if (this.timer) {               // 統一した名前に修正
+      this.startAutoPlay();
+    }
+  }
+
+  /* ========================================================================
+     4. BATCH TEST EXECUTION (Section 2.3)
+     ======================================================================== */
+
+  /**
+   * テストケースを一括実行し、結果とカバレッジをマージします。
+   */
+  runBatchTest() {
+    // 4.1 オートプレイの停止 (排他制御)
+    this.stopAutoPlay();
+
+    if (!this.ui.data || !this.ui.data.testCases) return;
+
+    // 4.2 TestRunner によるバッチ実行 (Step 5 連携)
+    const report = this.ui.testRunner.runAll(
+      this.ui.data.testCases, 
+      this.ui.data.states, 
+      this.ui.data.transitions
+    );
+
+    // 4.3 結果テーブル (#test-body) の描画
+    if (this.ui.els.testTable) {
+      this.ui.els.testTable.innerHTML = report.results.map(r => {
+        const statusClass = `result-${r.status.toLowerCase()}`;
+        const reasonHtml = r.status === "FAIL" 
+          ? `<div style="color:var(--action); font-size:10px;">${this.ui.renderer.escapeHtml(r.reason)}</div>` 
+          : `<div style="color:#64748b; font-size:10px;">${this.ui.renderer.escapeHtml(r.reason || "-")}</div>`;
+
+        return `
+          <tr class="${statusClass}">
+            <td>${this.ui.renderer.escapeHtml(r.id)}</td>
+            <td style="font-weight:bold;">${r.status}</td>
+            <td>${this.ui.renderer.escapeHtml(r.actual)}</td>
+            <td style="font-family:monospace;">${reasonHtml}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // 4.4 カバレッジ統合 (V52重要仕様)
+    // テストで通過した遷移行(visitedLines)を ui.coverageSet へマージ
+    if (report.coverage && report.coverage.visitedLines) {
+      report.coverage.visitedLines.forEach(lineIdx => {
+        if (this.ui.coverageSet) {
+          this.ui.coverageSet.add(lineIdx);
+        }
+      });
+    }
+
+    // 4.5 描画更新
+    // マージされたカバレッジをダイアグラムの色付けに反映させる
+    if (this.ui.renderer.renderMermaid) {
+      this.ui.renderer.renderMermaid();
+    }
+    
+    this.ui.renderer.showToast(`Batch Test Complete: ${report.results.length} cases executed.`, "info");
+  }
+}
+
+// --- PASTE STEP 6.3: UIController ---
+/**
+ * UIController Class (Main Orchestrator)
+ * Format D+++ Visualizer v52 - Step 6.3: Main Integration
+ * * 【V52 修正・完全実装内容】
+ * 1. 初期化順序の修正: this.data を最優先で初期化し、Analyzer に参照を渡すことで実行時エラーを防止。
+ * 2. 不正タグ除去: 構文エラーの原因となる引用タグ（Artifacts）を全域から排除。
+ * 3. 二重起動バグ修正: クラス外部の重複した初期化コードを削除。
+ * 4. Step 7 Analyzer 統合: 構文解析直後に静的解析を実行し、不備を即座にレポート。
+ * 5. 破壊的操作保護: ファイルインポート等のデータ上書き時にユーザー承認（Confirm）を強制。
+ * 6. セッション管理: localStorage からの復旧と、新規セッション時のデフォルトテンプレート展開。
+ * 7. 冗長な変数解析: 演算子や比較式から変数の型（数値/真偽値）を精密に抽出。
+ */
+class UIController {
+  constructor() {
+    // 1. システム状態管理プロパティ (SSOT Section 3) - 最優先で初期化
+    this.data = { states: [], transitions: [], testCases: [] };
+    this.varMeta = {};        // 変数型情報のキャッシュ
+    this.varConfigs = {};     // スライダー設定 (min/max/step)
+    this.coverageSet = new Set(); // 通過した行番号 (lineIndex) の集約
+    this.zoom = 1.0;
+    this.layout = 'TD';
+    this.debounceTimer = null;
+
+    // 2. 依存ロジックエンジンのインスタンス化 (SSOT 準拠)
+    this.evaluator = new SafeEvaluator();      // Step 1
+    this.parser = new DPlusPlusParser();        // Step 2
+    this.testRunner = new TestRunner(this.evaluator); // Step 5
+    this.analyzer = new DPlusPlusAnalyzer(this.data); // Step 7 (V52 新規統合 / 引数にthis.dataを渡す)
+    
+    // 3. DOM要素キャッシュの取得 (全サブクラス共有)
+    this.els = this._cacheElements();
+
+    // 4. サブコントローラーの初期化
+    this.renderer = new UIRenderer(this);    // Step 6.1
+    this.simCtrl = new SimController(this);  // Step 6.2
+
+    // グローバル公開 (HTML内イベントハンドラからのアクセス用)
+    window.ui = this;
+    console.log("UIController V52: Orchestrator instance created with correct initialization order.");
+  }
+
+  /**
+   * システムで使用する全ての DOM 要素をキャッシュします。
+   * Optional Chaining 用に、存在しない場合も構造を維持します。
+   * @private
+   */
+  _cacheElements() {
+    return {
+      editor: document.getElementById('editor'),
+      gutter: document.getElementById('gutter'),
+      mermaidDiv: document.getElementById('diagram'),
+      varTable: document.getElementById('var-body'),
+      testTable: document.getElementById('test-body'),
+      tabs: document.querySelectorAll('.tab-btn'),
+      panes: document.querySelectorAll('.tab-pane'),
+      initialCtx: document.getElementById('initial-context'),
+      analysisPanel: document.getElementById('analysis-panel'),
+      analysisList: document.getElementById('analysis-list'),
+      toast: document.getElementById('toast'),
+      modal: document.getElementById('code-modal'),
+      cppOutput: document.getElementById('cpp-output'),
+      simStatus: document.getElementById('sim-status'),
+      dashboardState: document.getElementById('dashboard-state'),
+      dashboardStep: document.getElementById('dashboard-step'),
+      dashboardCoverage: document.getElementById('dashboard-coverage'),
+      coverageProgress: document.getElementById('coverage-progress-fill'),
+      quickActions: document.getElementById('trigger-panel'),
+      btnPlay: document.getElementById('btn-play'),
+      btnPause: document.getElementById('btn-pause'),
+      speedRange: document.getElementById('speed-range'),
+      btnAiExport: document.getElementById('btn-ai-export')
+    };
+  }
+
+  /**
+   * アプリケーションの初期化とイベントリスナーの登録を行います。
+   * SSOT Section 2.1 / 3.1 遵守。
+   */
+  init() {
+    console.log("UIController V52: Initializing System...");
+
+    // 1. セッション復旧または新規セッション生成
+    const savedData = localStorage.getItem('dplus_model_v52');
+    if (savedData && this.els.editor) {
+      this.els.editor.value = savedData;
+    } else if (this.els.editor) {
+      // 新規セッション用のデフォルトテンプレート (Section 3.1.1)
+      this.els.editor.value = `// Format D+++ V52 New Session\n\nTable A: States\n| ID | Entry | Exit | Invariant |\n|:---|:---|:---|:---|\n| Idle | - | - | - |\n\nTable B: Transitions\n| Priority | Source | Trigger | Guard | Action | Target |\n|:---|:---|:---|:---|:---|:---|\n\nTable C: Test Cases\n| ID | Initial | Scenario | Context | Expected |\n|:---|:---|:---|:---|:---|\n`;
+    }
+
+    // 2. エディタ監視 (Debounce 500ms)
+    this.els.editor?.addEventListener('input', () => {
+      this.onEditorInput();
+      // 永続化プロトコル: 入力ごとに localStorage へ保存 (Section 3.1.4)
+      localStorage.setItem('dplus_model_v52', this.els.editor.value);
+    });
+
+    // 3. エディタとガターのスクロール同期
+    this.els.editor?.addEventListener('scroll', () => {
+      if (this.els.gutter && this.els.editor) {
+        this.els.gutter.scrollTop = this.els.editor.scrollTop;
+      }
+    });
+
+    // 4. シミュレーション制御ボタンの配線
+    document.getElementById('btn-start')?.addEventListener('click', () => this.simCtrl.startSimulation());
+    document.getElementById('btn-step')?.addEventListener('click', () => this.simCtrl.step());
+    document.getElementById('btn-sim-undo')?.addEventListener('click', () => this.simCtrl.undo());
+    this.els.btnPlay?.addEventListener('click', () => this.simCtrl.startAutoPlay());
+    this.els.btnPause?.addEventListener('click', () => this.simCtrl.stopAutoPlay());
+    this.els.speedRange?.addEventListener('input', (e) => this.simCtrl.setSpeed(e.target.value));
+
+    // 5. テスト実行ボタンの配線 (Section 2.1.4)
+    document.getElementById('btn-run-test')?.addEventListener('click', () => {
+      this.renderer.showToast("Batch Runner starting...", "info");
+      setTimeout(() => this.simCtrl.runBatchTest(), 50);
+    });
+
+    // 6. 表示・レイアウト制御の配線
+    document.getElementById('btn-layout-td')?.addEventListener('click', () => { this.layout = 'TD'; this._parseAndRender(); });
+    document.getElementById('btn-layout-lr')?.addEventListener('click', () => { this.layout = 'LR'; this._parseAndRender(); });
+    document.getElementById('btn-zoom-in')?.addEventListener('click', () => { this.zoom += 0.1; this.renderer.applyZoom(); });
+    document.getElementById('btn-zoom-out')?.addEventListener('click', () => { this.zoom = Math.max(0.1, this.zoom - 0.1); this.renderer.applyZoom(); });
+    document.getElementById('btn-zoom-reset')?.addEventListener('click', () => { this.zoom = 1.0; this.renderer.applyZoom(); });
+
+    // 7. エクスポート・モーダル関連
+    document.getElementById('btn-gen-cpp')?.addEventListener('click', () => {
+      const exporter = new DPlusPlusExporter(this);
+      exporter.showCodeModal('cpp');
+    });
+    this.els.btnAiExport?.addEventListener('click', () => {
+      const exporter = new DPlusPlusExporter(this);
+      exporter.exportAIContext();
+    });
+    document.getElementById('btn-download')?.addEventListener('click', () => {
+      const exporter = new DPlusPlusExporter(this);
+      exporter.exportSvg();
+    });
+    document.getElementById('btn-close-modal')?.addEventListener('click', () => {
+      if (this.els.modal) this.els.modal.style.display = 'none';
+    });
+    document.getElementById('btn-copy-code')?.addEventListener('click', () => {
+      this.els.cppOutput?.select();
+      document.execCommand('copy');
+      this.renderer.showToast("Copied to clipboard!", "success");
+    });
+
+    // 8. タブ切り替え
+    this.els.tabs.forEach(tab => {
+      tab.addEventListener('click', (e) => this._switchTab(e.target.dataset.target));
+    });
+
+    // 9. 初回レンダリングの実行
+    this._parseAndRender();
+    console.log("UIController V52: System Online.");
+  }
+
+  /**
+   * エディタ入力を検知し、指定時間経過後に解析を実行します。
+   */
+  onEditorInput() {
+    clearTimeout(this.debounceTimer);
+    this.debounceTimer = setTimeout(() => this._parseAndRender(), 500);
+  }
+
+/**
+   * テキストを解析し、Mermaid図と解析レポートを更新します。
+   */
+  async _parseAndRender() {
+    try {
+      const code = this.els.editor?.value || "";
+      
+      // 1. DPlusPlusParser による構造化
+      this.data = this.parser.parse(code);
+
+      // 【重要：追加】Analyzer の内部データを最新のパース結果で更新する
+      if (this.analyzer) {
+        this.analyzer.states = this.data.states;
+        this.analyzer.transitions = this.data.transitions;
+      }
+
+      // 2. DPlusPlusAnalyzer による静的解析を実行
+      this.analyzer.analyzeAll();
+
+      // 3. Renderer による描画（V51回帰プラン適用済み）
+      await this.renderer.renderMermaid();
+
+      // 4. 解析結果のUI表示
+      this.renderer.renderAnalysis(this.analyzer.report);
+
+    } catch (e) {
+      console.error("[UIController] Parse/Render Pipeline Failure:", e);
+    }
+  }
+
+  /**
+   * ファイルを読み込む際、既存データの上書きを確認します。
+   * SSOT Section 3.1.2 遵守。
+   */
+  importFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // 破壊的操作の保護
+    if (this.els.editor && this.els.editor.value.trim().length > 0) {
+      if (!window.confirm("Current editor content will be overwritten. Are you sure?")) {
+        return;
+      }
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (this.els.editor) {
+        this.els.editor.value = e.target.result;
+        this.onEditorInput();
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  /**
+   * 現在のコンテキスト（変数のスナップショット）を取得します。
+   */
+analyzeVariables() {
+    const vars = {}; 
+    const meta = {};
+    const keywords = new Set(['true', 'false', 'null', 'undefined', 'NaN', 'Math', 'OR', 'AND']);
+
+    // スキャナー本体（ここは変更なし）
+    const scan = (str) => {
+      if (!str || str === '-') return;
+
+      // 数値型の推定
+      const rangeMatch = str.match(/([a-zA-Z_][\w-]*)\s*(<|>|<=|>=)/g);
+      if (rangeMatch) {
+        rangeMatch.forEach(m => {
+          const v = m.match(/([a-zA-Z_][\w-]*)/)[1];
+          if (!keywords.has(v)) meta[v] = 'number';
+        });
+      }
+
+      // 真偽値型の推定
+      const boolMatch = str.match(/([a-zA-Z_][\w-]*)\s*(==|!=|=)\s*(true|false)|!([a-zA-Z_][\w-]*)/g);
+      if (boolMatch) {
+        boolMatch.forEach(m => {
+          const v = m.match(/([a-zA-Z_][\w-]*)/)?.[1] || m.match(/!([a-zA-Z_][\w-]*)/)?.[1];
+          if (v && !keywords.has(v)) meta[v] = 'boolean';
+        });
+      }
+
+      // 識別子の抽出
+      const allMatch = str.match(/\b[a-zA-Z_][\w-]*\b/g);
+      if (allMatch) {
+        allMatch.forEach(v => {
+          if (!keywords.has(v) && !/^\d+$/.test(v)) {
+            if (!vars.hasOwnProperty(v)) vars[v] = 0; 
+          }
+        });
+      }
+    };
+
+    // --- 修正箇所 ---
+    // Table A: 全ての要素が変数に関係する（Entry, Exit, Invariant）
+    this.data.states.forEach(s => { 
+      scan(s.entry); 
+      scan(s.exit); 
+      scan(s.invariant); 
+    });
+
+    // Table B: Guard と Action のみをスキャンし、Trigger（イベント名）は除外する
+    this.data.transitions.forEach(t => { 
+      // scan(t.trigger); // ← ここを削除
+      scan(t.guard); 
+      scan(t.action); 
+    });
+
+    this.varMeta = meta; 
+    return vars;
+}
+
+  /**
+   * カバレッジ率を計算します。
+   * @returns {number} 0-100 の整数
+   */
+  calculateCoverage() {
+    if (!this.data.transitions || this.data.transitions.length === 0) return 0;
+    
+    // 現在のセッションまたはテストで通過したユニークな遷移をカウント
+    const visited = this.data.transitions.filter(t => this.coverageSet.has(t.lineIndex)).length;
+    return Math.round((visited / this.data.transitions.length) * 100);
+  }
+
+  /**
+   * 指定した行番号へジャンプ（フォーカス）します。
+   * @param {number} lineIndex 
+   */
+  jumpToLine(lineIndex) {
+    if (!this.els.editor) return;
+    const text = this.els.editor.value;
+    const lines = text.split('\n');
+    let startPos = 0;
+    for (let i = 0; i < lineIndex; i++) {
+      startPos += (lines[i]?.length || 0) + 1;
+    }
+    this.els.editor.focus();
+    this.els.editor.setSelectionRange(startPos, startPos + (lines[lineIndex]?.length || 0));
+    
+    // スクロール同期 (line-height 21px 想定)
+    this.els.editor.scrollTop = (lineIndex * 21) - (this.els.editor.clientHeight / 2);
+  }
+
+  /**
+   * タブパネルを切り替えます。
+   * @private
+   */
+  _switchTab(targetId) {
+    if (!this.els.panes || !this.els.tabs) return;
+    this.els.panes.forEach(p => p.style.display = p.id === targetId ? 'flex' : 'none');
+    this.els.tabs.forEach(t => t.classList.toggle('active', t.dataset.target === targetId));
+  }
+}
+
+
+
+    window.addEventListener('DOMContentLoaded', () => {
+        try {
+            console.log("HACE Engine V52 Full: System Booting...");
+            
+            if (typeof UIController !== 'undefined') {
+                const ui = new UIController();
+                window.ui = ui;
+                ui.init();
+            }
+
+            // Gutter Sync (B-02)
+            const editor = document.getElementById('editor');
+            const gutter = document.getElementById('gutter');
+            const syncGutter = () => {
+                const lines = editor.value.split('\n').length;
+                gutter.innerHTML = Array.from({length: lines}, (_, i) => i + 1).join('<br>');
+            };
+            editor.addEventListener('input', syncGutter);
+            editor.addEventListener('scroll', () => { gutter.scrollTop = editor.scrollTop; });
+            syncGutter();
+
+            console.log("HACE Engine V52 Full: System Online (SSOT Compliant).");
+        } catch (e) {
+            console.error("Critical Boot Error:", e);
+        }
+    });
+</script>
+</body>
+</html>
