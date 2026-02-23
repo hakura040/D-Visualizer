@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Format D+++ Visualizer v27.0 (Perfect Merge)</title>
+    <style>
+        :root { --bg-color: #f4f6f8; --panel-bg: #ffffff; --text-color: #333; --border-color: #ddd; --primary-color: #2962ff; --error-color: #d32f2f; --success-color: #2e7d32; --warn-color: #f57c00; --ghost-color: #7e57c2; }
+        body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: var(--bg-color); color: var(--text-color); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        header { background-color: var(--panel-bg); padding: 0.8rem 2rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; z-index: 10; flex-shrink: 0; }
+        h1 { margin: 0; font-size: 1.2rem; color: var(--primary-color); display: flex; align-items: center; gap: 10px; }
+        .status-badge { font-size: 0.8rem; padding: 4px 8px; border-radius: 4px; background-color: #eee; font-weight: bold; font-family: monospace; transition: background 0.3s; }
+        
+        main { display: flex; flex: 1; overflow: hidden; }
+        
+        /* Responsive Split Logic */
+        @media (max-width: 800px) {
+            main { flex-direction: column; overflow-y: auto; }
+            .editor-pane { max-width: 100% !important; border-right: none !important; border-bottom: 1px solid var(--border-color); min-height: 350px; }
+            .preview-pane { min-height: 500px; }
+        }
+
+        .editor-pane { flex: 1; display: flex; flex-direction: column; border-right: 1px solid var(--border-color); background: var(--panel-bg); min-width: 300px; max-width: 40%; }
+        .pane-header { padding: 10px 15px; background: #f9f9f9; font-size: 0.9rem; font-weight: bold; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+        
+        /* v27.0 Enhanced Editor Styles (Merged from v26) */
+        .editor-container { flex: 1; display: flex; position: relative; overflow: hidden; }
+        #line-numbers {
+            width: 45px;
+            background: #f5f5f5;
+            color: #999;
+            text-align: right;
+            padding: 20px 5px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            border-right: 1px solid #ddd;
+            user-select: none;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+        #input-textarea {
+            flex: 1;
+            border: none;
+            padding: 20px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            resize: none;
+            outline: none;
+            white-space: pre;
+            overflow-y: auto;
+            box-sizing: border-box;
+            background: transparent;
+        }
+        
+        .preview-pane { flex: 2; background-color: var(--bg-color); display: flex; flex-direction: column; position: relative; overflow: hidden; }
+        .toolbar { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px; background: #fff; border-bottom: 1px solid var(--border-color); }
+        .btn { background: white; border: 1px solid #ccc; border-radius: 4px; padding: 4px 10px; font-size: 0.85rem; cursor: pointer; transition: all 0.2s; }
+        .btn:hover { background: #eef; border-color: var(--primary-color); }
+        .btn-active { background: var(--primary-color); color: white; border-color: var(--primary-color); }
+        
+        #mermaid-viewport { flex: 1; overflow: auto; padding: 40px; background-image: radial-gradient(#ddd 1px, transparent 1px); background-size: 20px 20px; }
+        #mermaid-container { display: inline-block; min-width: 100%; transition: transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94); transform-origin: top center; }
+        
+        #analysis-panel { position: absolute; bottom: 0; left: 0; right: 0; background: #fff3e0; border-top: 2px solid var(--warn-color); padding: 10px 20px; max-height: 180px; overflow-y: auto; display: none; z-index: 40; }
+        .analysis-item { margin-bottom: 5px; cursor: pointer; display: flex; gap: 10px; font-size: 0.85rem; padding: 4px; border-radius: 4px; }
+        .analysis-item:hover { background: rgba(0,0,0,0.05); }
+        .analysis-item.error { color: var(--error-color); font-weight: bold; }
+        .analysis-item.deadlock { color: var(--error-color); background: #ffebee; border-left: 4px solid var(--error-color); }
+        .analysis-item.ghost { color: var(--ghost-color); border-left: 4px solid var(--ghost-color); }
+        
+        #toast { position: absolute; top: 70px; right: 20px; background-color: #333; color: white; padding: 8px 16px; border-radius: 4px; opacity: 0; transition: opacity 0.5s; pointer-events: none; z-index: 100; font-size: 0.9rem; }
+        #code-modal { position: fixed; top: 5%; left: 5%; width: 90%; height: 90%; background: white; border: 1px solid #ccc; box-shadow: 0 0 20px rgba(0,0,0,0.3); z-index: 1000; display: none; flex-direction: column; }
+        #code-display { flex: 1; padding: 20px; font-family: 'Consolas', monospace; white-space: pre; overflow: auto; background: #1e1e1e; color: #d4d4d4; }
+        
+        /* Interactive Hooks */
+        .edge-hook, .node-hook { cursor: pointer; }
+        .node-hook { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .edge-label-btn { background: rgba(255,255,255,0.9); padding: 2px 5px; border-radius: 4px; border: 1px solid #eee; }
+        
+        #fatal-error { display: none; background: #ffebee; color: #c62828; padding: 20px; text-align: center; border-bottom: 1px solid #ef9a9a; font-weight: bold; z-index: 999; position: absolute; width: 100%; top:0; }
+    </style>
+</head>
+<body>
+
+<div id="fatal-error"></div>
+
+<div id="code-modal">
+    <div class="pane-header">C++ Code Generation <button class="btn" onclick="document.getElementById('code-modal').style.display='none'">Close</button></div>
+    <div id="code-display"></div>
+</div>
+
+<header>
+    <h1>Format D+++ Visualizer <span style="font-size:0.8em; opacity:0.7;">v27.0</span></h1>
+    <div id="status-indicator" class="status-badge">Sys.Boot</div>
+</header>
+
+<main>
+    <div class="editor-pane">
+        <div class="pane-header">Input Definition (Format D+++)</div>
+        <div class="editor-container">
+            <div id="line-numbers"></div>
+            <textarea id="input-textarea" spellcheck="false"></textarea>
+        </div>
+    </div>
+    <div class="preview-pane">
+        <div class="toolbar">
+            <button class="btn" id="btn-layout-td">⬇ TD</button>
+            <button class="btn" id="btn-layout-lr">➡ LR</button>
+            <div style="width:1px; background:#ddd; margin:0 5px;"></div>
+            <button class="btn" id="btn-zoom-out">－</button>
+            <button class="btn" id="btn-zoom-reset">100%</button>
+            <button class="btn" id="btn-zoom-in">＋</button>
+            <div style="width:1px; background:#ddd; margin:0 5px;"></div>
+            <button class="btn" id="btn-download">⬇ SVG</button>
+            <button class="btn" id="btn-gen-cpp" style="background:#e3f2fd; color:#0d47a1; font-weight:bold;">⬇ C++</button>
+        </div>
+        <div id="mermaid-viewport"><div id="mermaid-container"></div></div>
+        <div id="analysis-panel"></div>
+        <div id="toast"></div>
+    </div>
+</main>
+
+<script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+
+    // --- 1. PARSER (Standard) ---
+    class DPlusPlusParser {
+        static parse(text) {
+            if(!text) return { states: [], transitions: [] };
+            const lines = text.split('\n');
+            const states = []; const transitions = [];
+            let section = null;
+            lines.forEach((l, idx) => {
+                const tr = l.trim();
+                if (!tr || tr.startsWith('---')) return;
+                if (tr.match(/Table A/i)) { section = 'A'; return; }
+                if (tr.match(/Table B/i)) { section = 'B'; return; }
+                if (tr.match(/^[\s\|:\-]+$/)) return;
+                const d = tr.includes('|') ? '|' : ',';
+                let c = tr.split(d).map(s => s.trim());
+                if (d === '|') { if(c[0]==='') c.shift(); if(c[c.length-1]==='') c.pop(); }
+                
+                if (section === 'A' && c[0] && !c[0].toLowerCase().includes('state id')) {
+                    states.push({ id: c[0], entry: c[1]||'', exit: c[2]||'', invariant: c[3]||'', lineIndex: idx });
+                } else if (section === 'B' && c[0] && !c[0].toLowerCase().includes('priority')) {
+                    transitions.push({ priority: c[0], source: c[1], trigger: c[2], guard: c[3]||'', action: c[4]||'', target: c[5], lineIndex: idx });
+                }
+            });
+            return { states, transitions };
+        }
+    }
+
+    // --- 2. ANALYZER (v16 Features) ---
+    class DPlusPlusAnalyzer {
+        static analyze(data) {
+            const warnings = [];
+            if (data.states.length === 0) return warnings;
+            const definedIds = new Set(data.states.map(s => s.id));
+            const adj = new Map();
+            definedIds.forEach(id => adj.set(id, []));
+
+            // Validate Transitions
+            data.transitions.forEach(t => {
+                const sources = (t.source === '*') ? Array.from(definedIds) : [t.source];
+                sources.forEach(src => {
+                    if (definedIds.has(src)) {
+                        const target = (!t.target || t.target === '-' || t.target === src) ? src : t.target;
+                        if (definedIds.has(target)) { adj.get(src).push(target); }
+                        else if (target !== src) warnings.push({ type: 'error', msg: `未定義ターゲット: '${target}'`, line: t.lineIndex });
+                    } else if (src !== '*') warnings.push({ type: 'error', msg: `未定義ソース: '${src}'`, line: t.lineIndex });
+                });
+            });
+
+            // Reachability (BFS) - Ghost Detection
+            const initialId = data.states[0].id;
+            const visited = new Set([initialId]);
+            const queue = [initialId];
+            while (queue.length > 0) {
+                const curr = queue.shift();
+                (adj.get(curr) || []).forEach(next => { if (!visited.has(next)) { visited.add(next); queue.push(next); } });
+            }
+            data.states.forEach(s => { if (!visited.has(s.id)) warnings.push({ type: 'ghost', msg: `到達不能(幽霊状態): 初期状態から到達できません`, line: s.lineIndex }); });
+            
+            // Deadlock Detection
+            adj.forEach((targets, src) => {
+                const hasExternal = targets.some(t => t !== src);
+                if (!hasExternal && src !== initialId) {
+                    const sObj = data.states.find(s => s.id === src);
+                    if (!src.toLowerCase().match(/(end|final|finish)/)) {
+                        warnings.push({ type: 'deadlock', msg: `デッドロック警告: '${src}' から脱出する遷移がありません`, line: sObj ? sObj.lineIndex : 0 });
+                    }
+                }
+            });
+            return warnings;
+        }
+    }
+
+    // --- 3. BUILDER (v13+v16+v24 Merged) ---
+    class MermaidBuilder {
+        static escape(str) { return str ? str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':"'","'":"'"}[m])) : ''; }
+        static safeId(id) { return id.replace(/[^a-zA-Z0-9_\.]/g, '_').replace(/\./g, '_'); }
+        
+        static build(data, layout = 'TD') {
+            const { states, transitions } = data;
+            let mm = [`flowchart ${layout}`];
+            const dir = (layout === 'LR') ? 'LR' : 'TB';
+            
+            const root = { children: {} };
+            states.forEach(s => {
+                let curr = root;
+                s.id.split('.').forEach((p, i, a) => {
+                    const path = a.slice(0, i+1).join('.');
+                    if (!curr.children[p]) curr.children[p] = { name: p, fullPath: path, children: {}, data: null };
+                    curr = curr.children[p];
+                    if (i === a.length - 1) curr.data = s;
+                });
+            });
+
+            // v13/v25 Feature: Recursive render with Parent Annotation
+            const renderNode = (node, lvl) => {
+                const ind = '    '.repeat(lvl);
+                const id = this.safeId(node.fullPath);
+                
+                if (Object.keys(node.children).length > 0) {
+                    // Subgraph
+                    mm.push(`${ind}subgraph ${id} ["${node.name}"]\n${ind}    direction ${dir}`);
+                    
+                    // Annotation Box for Parent State
+                    if (node.data) {
+                        const d = node.data; const info = [];
+                        if (d.entry && d.entry!=='-') info.push(`E: ${this.escape(d.entry)}`);
+                        if (d.exit && d.exit!=='-') info.push(`X: ${this.escape(d.exit)}`);
+                        if (d.invariant && d.invariant!=='-') info.push(`I: ${this.escape(d.invariant)}`);
+                        if (info.length > 0) {
+                            const infoId = id + "_info";
+                            mm.push(`${ind}    ${infoId}["<span class='edge-hook' data-idx='${d.lineIndex}'>${info.join('<br/>')}</span>"]\n${ind}    style ${infoId} fill:#fff,stroke-dasharray: 5 5,color:#666`);
+                        }
+                    }
+                    
+                    Object.keys(node.children).forEach(k => renderNode(node.children[k], lvl + 1));
+                    mm.push(`${ind}end`);
+                } else {
+                    // Leaf Node with Full Info
+                    let lbl = `<b>${node.name}</b>`;
+                    if (node.data) {
+                        const d = node.data;
+                        if (d.entry && d.entry!=='-') lbl += `<br/><small>E: ${this.escape(d.entry)}</small>`;
+                        if (d.exit && d.exit!=='-') lbl += `<br/><small>X: ${this.escape(d.exit)}</small>`;
+                        if (d.invariant && d.invariant!=='-') lbl += `<br/><small>I: ${this.escape(d.invariant)}</small>`;
+                        lbl = `<div class='node-hook' data-idx='${d.lineIndex}'>${lbl}</div>`;
+                    }
+                    mm.push(`${ind}${id}["${lbl}"]`);
+                }
+            };
+            Object.keys(root.children).forEach(k => renderNode(root.children[k], 1));
+
+            // v13/v25 Feature: Wildcard Expansion
+            const definedIds = states.map(s => s.id);
+            transitions.forEach(t => {
+                const srcs = (t.source === '*') ? definedIds : [t.source];
+                srcs.forEach(src => {
+                    const sId = this.safeId(src);
+                    const tId = this.safeId((!t.target || t.target === '-' || t.target === src) ? src : t.target);
+                    
+                    let label = `<b>${this.escape(t.trigger)}</b>`;
+                    if (t.priority.toLowerCase() === 'interrupt') label = `⚠ ${label}`;
+                    if (t.guard && t.guard !== '-') label += `<br/>[${this.escape(t.guard)}]`;
+                    if (t.action && t.action !== '-') label += `<br/>/ ${this.escape(t.action)}`;
+                    
+                    mm.push(`    ${sId} -->|"<div class='edge-label-btn edge-hook' data-idx='${t.lineIndex}'>${label}</div>"| ${tId}`);
+                });
+            });
+            mm.push('    classDef default cursor:pointer;');
+            return mm.join('\n');
+        }
+    }
+
+    // --- 4. GENERATOR (v23/v25 Full Logic) ---
+    class CppGenerator {
+        static generate(data) {
+            const states = data.states.map(s => s.id);
+            let code = `/**\n * Format D+++ v27.0 Generated Code\n * Architecture: Hierarchical State Machine\n */\n\n#include <iostream>\n#include <string>\n#include <functional>\n\n`;
+            code += `enum class State {\n    ${states.map(s=>s.replace(/\./g,'_')).join(',\n    ')}\n};\n\n`;
+            
+            code += `class StateMachine {\nprivate:\n    State currentState;\n\n`;
+            
+            data.states.forEach(s => {
+                const sid = s.id.replace(/\./g,'_');
+                if (s.entry && s.entry!=='-') code += `    void onEntry_${sid}() { /* ${s.entry} */ }\n`;
+                if (s.exit && s.exit!=='-') code += `    void onExit_${sid}() { /* ${s.exit} */ }\n`;
+            });
+            
+            code += `\npublic:\n    void handleEvent(const std::string& trigger) {\n`;
+            
+            // Priority Sort Logic (Restored)
+            const priorityMap = { 'interrupt': 0, 'override': 1, 'default': 2 };
+            const sortedTrans = [...data.transitions].sort((a,b) => priorityMap[a.priority.toLowerCase()] - priorityMap[b.priority.toLowerCase()]);
+
+            sortedTrans.forEach(t => {
+                const srcStr = (t.source === '*') ? `/* Any */` : `currentState == State::${t.source.replace(/\./g,'_')}`;
+                const checkStr = (t.source === '*') ? `true` : srcStr;
+                
+                code += `        if (trigger == "${t.trigger}" && ${checkStr}) {\n`;
+                if (t.guard && t.guard !== '-') code += `            if (!(${t.guard})) return;\n`;
+                code += `            // Priority: ${t.priority}\n`;
+                code += `            // Action: ${t.action}\n`;
+                code += `            // Transition to: ${t.target}\n`;
+                code += `            return;\n        }\n`;
+            });
+            
+            code += `    }\n};\n`;
+            return code;
+        }
+    }
+
+    // --- 5. APP CORE (Unified v25 + v26) ---
+    class DPlusPlusApp {
+        constructor() {
+            this.zoom = 1.0; this.layout = 'TD';
+            this.dom = { input: document.getElementById('input-textarea'), gutter: document.getElementById('line-numbers'), indicator: document.getElementById('status-indicator'), mermaid: document.getElementById('mermaid-container'), analysis: document.getElementById('analysis-panel'), toast: document.getElementById('toast') };
+            window.appInstance = this;
+        }
+
+        async start(lib) {
+            this.mermaid = lib;
+            // Config: Linear for layout stability, HTML Labels for hooks
+            this.mermaid.initialize({ 
+                startOnLoad: false, 
+                theme: 'neutral', 
+                securityLevel: 'loose', 
+                flowchart: { htmlLabels: true, nodeSpacing: 40, rankSpacing: 50, curve: 'linear' }
+            });
+            
+            const sample = `# Format D+++ v27.0 Sample\n\n## Table A: State Lifecycle\n| State ID | Entry | Exit | Invariant |\n| :--- | :--- | :--- | :--- |\n| Sys | powerOn() | - | - |\n| Sys.Boot | checkHW() | - | - |\n| Sys.Idle | enableUI() | - | waiting |\n| Sys.Working | startJob() | stopJob() | temp < 80 |\n\n## Table B: Transition Logic\n| Priority | Source | Trigger | Guard | Action | Target |\n| :--- | :--- | :--- | :--- | :--- | :--- |\n| Interrupt | * | EV_FATAL | - | logError() | Sys.Boot |\n| Default | Sys.Boot | EV_OK | - | - | Sys.Idle |\n| Default | Sys.Idle | EV_START | isReady | - | Sys.Working |\n| Default | Sys.Working | EV_STOP | - | save() | Sys.Idle |`;
+            
+            this.dom.input.value = sample;
+            this.bindEvents();
+            this.updateGutter(); // Init Gutter
+            this.refresh();
+        }
+
+        bindEvents() {
+            // Enhanced Input Event (v26)
+            this.dom.input.addEventListener('input', () => { 
+                this.updateGutter();
+                clearTimeout(this.timer); 
+                this.timer = setTimeout(() => this.refresh(), 500); 
+            });
+            
+            // Scroll Sync (v26)
+            this.dom.input.addEventListener('scroll', () => {
+                this.dom.gutter.scrollTop = this.dom.input.scrollTop;
+            });
+
+            document.getElementById('btn-layout-td').onclick = () => { this.layout = 'TD'; this.refresh(); };
+            document.getElementById('btn-layout-lr').onclick = () => { this.layout = 'LR'; this.refresh(); };
+            document.getElementById('btn-zoom-in').onclick = () => this.handleZoom(0.1);
+            document.getElementById('btn-zoom-out').onclick = () => this.handleZoom(-0.1);
+            document.getElementById('btn-zoom-reset').onclick = () => { this.zoom = 1.0; this.handleZoom(0); };
+            document.getElementById('btn-download').onclick = () => this.download();
+            document.getElementById('btn-gen-cpp').onclick = () => this.showCpp();
+        }
+
+        updateGutter() {
+            const lineCount = this.dom.input.value.split('\n').length;
+            this.dom.gutter.innerHTML = Array.from({length: lineCount}, (_, i) => i + 1).join('<br>');
+        }
+
+        refresh() {
+            const data = DPlusPlusParser.parse(this.dom.input.value);
+            const warnings = DPlusPlusAnalyzer.analyze(data);
+            this.showAnalysis(warnings);
+            this.render(MermaidBuilder.build(data, this.layout));
+        }
+
+        showAnalysis(warnings) {
+            this.dom.analysis.innerHTML = '';
+            if (warnings.length > 0) {
+                this.dom.analysis.style.display = 'block';
+                warnings.forEach(w => {
+                    const div = document.createElement('div'); div.className = `analysis-item ${w.type}`;
+                    div.innerHTML = `<span>${w.type==='error'?'❌':(w.type==='deadlock'?'🚨':'⚠️')}</span> Line ${w.line+1}: ${w.msg}`;
+                    div.onclick = () => this.jump(w.line);
+                    this.dom.analysis.appendChild(div);
+                });
+                this.updateBadge('Sys.Warning', 'var(--warn-color)');
+            } else { 
+                this.dom.analysis.style.display = 'none'; 
+                this.updateBadge('Sys.Idle', 'var(--success-color)'); 
+            }
+        }
+
+        updateBadge(txt, col) { 
+            this.dom.indicator.textContent = txt; 
+            this.dom.indicator.style.background = col; 
+            this.dom.indicator.style.color = 'white'; 
+        }
+        
+        async render(code) {
+            try {
+                const { svg } = await this.mermaid.render('graph_' + Date.now(), code);
+                this.dom.mermaid.innerHTML = svg;
+                const svgEl = this.dom.mermaid.querySelector('svg');
+                if(svgEl) { svgEl.style.width = '100%'; svgEl.style.maxWidth = 'none'; svgEl.removeAttribute('height'); }
+                
+                // Post-binding Hooks
+                this.dom.mermaid.querySelectorAll('.edge-hook, .node-hook').forEach(el => {
+                    el.onclick = (e) => { e.stopPropagation(); this.jump(parseInt(el.dataset.idx)); };
+                });
+            } catch (e) { 
+                this.updateBadge('Sys.Error', 'var(--error-color)'); 
+            }
+        }
+        
+        handleZoom(delta) { 
+            this.zoom = Math.max(0.1, Math.min(5.0, this.zoom + delta)); 
+            this.dom.mermaid.style.transform = `scale(${this.zoom})`; 
+        }
+
+        jump(idx) {
+            const ta = this.dom.input; const lines = ta.value.split('\n');
+            let start = 0; for(let i=0; i<idx; i++) start += lines[i].length + 1;
+            ta.focus(); ta.setSelectionRange(start, start + lines[idx].length);
+            const lh = 21; 
+            ta.scrollTop = (idx * lh) - (ta.clientHeight / 2);
+            this.showToast(`Jump to Line ${idx + 1}`);
+        }
+
+        showToast(msg) { 
+            this.dom.toast.textContent = msg; 
+            this.dom.toast.style.opacity = 1; 
+            setTimeout(()=>this.dom.toast.style.opacity = 0, 2000); 
+        }
+
+        download() {
+            const svg = this.dom.mermaid.querySelector('svg'); if (!svg) return;
+            const source = '<?xml version="1.0" standalone="no"?>\r\n' + (new XMLSerializer()).serializeToString(svg);
+            const a = document.createElement("a"); a.href = "data:image/svg+xml;charset=utf-8,"+encodeURIComponent(source);
+            a.download = "format_d_plus_v27.svg"; a.click();
+        }
+
+        showCpp() {
+            const data = DPlusPlusParser.parse(this.dom.input.value);
+            const code = CppGenerator.generate(data);
+            document.getElementById('code-display').textContent = code;
+            document.getElementById('code-modal').style.display = 'flex';
+        }
+    }
+
+    // Start
+    const app = new DPlusPlusApp();
+    app.start(mermaid);
+</script>
+</body>
+</html>
